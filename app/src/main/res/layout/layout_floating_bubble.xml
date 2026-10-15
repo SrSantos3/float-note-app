@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bubble_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:padding="8dp">
+
+    <!-- Icono circular de la burbuja -->
+    <ImageView
+        android:id="@+id/img_bubble_icon"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:background="@drawable/bg_floating_bubble"
+        android:contentDescription="Burbuja flotante de notas"
+        android:elevation="8dp"
+        android:padding="14dp"
+        android:src="@drawable/ic_bubble" />
+
+    <!-- Contador de tareas pendientes (Badge rojo) -->
+    <TextView
+        android:id="@+id/tv_pending_badge"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="2dp"
+        android:layout_marginEnd="2dp"
+        android:background="@drawable/bg_badge"
+        android:elevation="10dp"
+        android:gravity="center"
+        android:text="0"
+        android:textColor="#FFFFFF"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+</FrameLayout>

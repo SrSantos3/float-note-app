@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">FloatNote</string>
+    <string name="channel_reminders_name">Recordatorios de Notas</string>
+    <string name="channel_reminders_desc">Notificaciones programadas y periódicas para notas y tareas pendientes.</string>
+    <string name="channel_overlay_service_name">Servicio de Burbuja Flotante</string>
+    <string name="channel_overlay_service_desc">Mantiene la burbuja flotante accesible sobre todas las aplicaciones.</string>
+    <string name="overlay_service_active">Burbuja flotante activa</string>
+    <string name="overlay_service_desc">Toca la burbuja en pantalla para ver tus tareas pendientes en cualquier momento.</string>
+    
+    <!-- Action buttons -->
+    <string name="action_complete">Marcar Hecha</string>
+    <string name="action_snooze">Posponer 15 min</string>
+    <string name="notification_pending_task">Tarea pendiente</string>
+</resources>
