@@ -8,9 +8,14 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.DisplayMetrics
 import android.view.*
 import android.widget.*
@@ -19,8 +24,10 @@ import com.antigravity.floatingnotes.MainActivity
 import com.antigravity.floatingnotes.R
 import com.antigravity.floatingnotes.data.AppDatabase
 import com.antigravity.floatingnotes.data.NoteEntity
+import com.antigravity.floatingnotes.ui.util.NlpTaskParser
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
+import java.util.Locale
 import kotlin.math.abs
 
 class FloatingBubbleService : Service() {
@@ -49,6 +56,11 @@ class FloatingBubbleService : Service() {
     private var tvEmptyState: TextView? = null
     private var tvPopupCount: TextView? = null
     private var etQuickNote: EditText? = null
+    private var btnSpeechToText: ImageButton? = null
+
+    // Reconocimiento de voz en la burbuja
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
 
     companion object {
         const val CHANNEL_ID = "channel_floating_bubble_service"
@@ -66,6 +78,7 @@ class FloatingBubbleService : Service() {
         startForegroundNotification()
         setupFloatingBubble()
         setupFloatingPopup()
+        initSpeechRecognizer()
         observeDatabaseNotes()
     }
 
@@ -136,7 +149,6 @@ class FloatingBubbleService : Service() {
         bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
         tvPendingBadge = bubbleView?.findViewById(R.id.tv_pending_badge)
 
-        // Eventos táctiles para arrastre suave y ajuste a los bordes
         bubbleView?.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -167,11 +179,9 @@ class FloatingBubbleService : Service() {
                         val diffY = abs(event.rawY - initialTouchY)
                         val duration = System.currentTimeMillis() - touchStartTime
 
-                        // Si fue un toque rápido sin mover apenas el dedo: Toque (Click)
                         if (diffX < 15 && diffY < 15 && duration < 300) {
                             togglePopup()
                         } else {
-                            // Ajustar al borde izquierdo o derecho de la pantalla
                             snapBubbleToEdge()
                         }
                         return true
@@ -215,7 +225,6 @@ class FloatingBubbleService : Service() {
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             layoutFlag,
-            // NOTA: FLAG_NOT_TOUCH_MODAL permite escribir en el EditText sin bloquear toques fuera si es necesario
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -229,24 +238,26 @@ class FloatingBubbleService : Service() {
         tvEmptyState = popupView?.findViewById(R.id.tv_empty_state)
         tvPopupCount = popupView?.findViewById(R.id.tv_popup_count)
         etQuickNote = popupView?.findViewById(R.id.et_quick_note)
+        btnSpeechToText = popupView?.findViewById(R.id.btn_speech_to_text)
 
-        // Botón cerrar popup
         popupView?.findViewById<ImageButton>(R.id.btn_popup_close)?.setOnClickListener {
             hidePopup()
         }
 
-        // Botón añadir nota rápida desde el popup
         popupView?.findViewById<ImageButton>(R.id.btn_quick_add)?.setOnClickListener {
             submitQuickNote()
         }
 
-        // Enter en el teclado para añadir
+        // Dictado por voz flotante
+        btnSpeechToText?.setOnClickListener {
+            toggleVoiceRecognition()
+        }
+
         etQuickNote?.setOnEditorActionListener { _, _, _ ->
             submitQuickNote()
             true
         }
 
-        // Botón abrir aplicación completa
         popupView?.findViewById<Button>(R.id.btn_open_full_app)?.setOnClickListener {
             hidePopup()
             val intent = Intent(this, MainActivity::class.java).apply {
@@ -255,7 +266,6 @@ class FloatingBubbleService : Service() {
             startActivity(intent)
         }
 
-        // Toque fuera de la tarjeta para cerrarla
         popupView?.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_OUTSIDE) {
                 hidePopup()
@@ -266,17 +276,100 @@ class FloatingBubbleService : Service() {
         }
     }
 
+    private fun initSpeechRecognizer() {
+        if (SpeechRecognizer.isRecognitionAvailable(this)) {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
+            speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    etQuickNote?.hint = "🎙️ Escuchando... habla ahora"
+                }
+
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {
+                    isListening = false
+                    etQuickNote?.hint = "Añadir o dictar tarea..."
+                }
+
+                override fun onError(error: Int) {
+                    isListening = false
+                    etQuickNote?.hint = "Añadir o dictar tarea..."
+                    Toast.makeText(applicationContext, "No se capturó la voz. Toca el micro para reintentar.", Toast.LENGTH_SHORT).show()
+                }
+
+                override fun onResults(results: Bundle?) {
+                    isListening = false
+                    etQuickNote?.hint = "Añadir o dictar tarea..."
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        val spokenText = matches[0]
+                        etQuickNote?.setText(spokenText)
+                        // Añadir automáticamente tras dictar
+                        submitQuickNote()
+                    }
+                }
+
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    if (!matches.isNullOrEmpty()) {
+                        etQuickNote?.setText(matches[0])
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
+        }
+    }
+
+    private fun toggleVoiceRecognition() {
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            Toast.makeText(this, "El reconocimiento de voz no está disponible en este dispositivo.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (isListening) {
+            speechRecognizer?.stopListening()
+            isListening = false
+            etQuickNote?.hint = "Añadir o dictar tarea..."
+        } else {
+            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            }
+            try {
+                speechRecognizer?.startListening(intent)
+                isListening = true
+                etQuickNote?.hint = "🎙️ Escuchando... habla ahora"
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isListening = false
+            }
+        }
+    }
+
     private fun submitQuickNote() {
         val text = etQuickNote?.text?.toString()?.trim() ?: ""
         if (text.isNotBlank()) {
             serviceScope.launch(Dispatchers.IO) {
                 val db = AppDatabase.getDatabase(applicationContext)
+                val parsed = NlpTaskParser.parse(text)
                 val newNote = NoteEntity(
-                    title = text,
+                    title = parsed.cleanTitle.ifBlank { text },
+                    targetDate = parsed.targetDate,
+                    targetTime = parsed.targetTime,
+                    repeatIntervalMinutes = parsed.repeatIntervalMinutes,
                     isPinnedToOverlay = true,
-                    priority = 2
+                    priority = if (parsed.isUrgent) 3 else 2,
+                    category = parsed.detectedCategory ?: "General",
+                    colorHex = if (parsed.isUrgent) "#EC4899" else "#6366F1",
+                    isUrgentAlarm = parsed.isUrgent
                 )
-                db.noteDao().insertNote(newNote)
+                val insertedId = db.noteDao().insertNote(newNote)
+                if (newNote.repeatIntervalMinutes > 0 || newNote.targetTime != null || newNote.targetDate != null || newNote.isUrgentAlarm) {
+                    ReminderScheduler.scheduleNoteReminder(applicationContext, newNote.copy(id = insertedId))
+                }
             }
             etQuickNote?.setText("")
         }
@@ -304,6 +397,10 @@ class FloatingBubbleService : Service() {
     private fun hidePopup() {
         if (isPopupOpen && popupView != null) {
             try {
+                if (isListening) {
+                    speechRecognizer?.stopListening()
+                    isListening = false
+                }
                 windowManager.removeView(popupView)
                 isPopupOpen = false
             } catch (e: Exception) {
@@ -325,7 +422,6 @@ class FloatingBubbleService : Service() {
     private fun updateOverlayUI(notes: List<NoteEntity>) {
         val count = notes.size
 
-        // 1. Actualizar el badge en la burbuja flotante
         if (count > 0) {
             tvPendingBadge?.visibility = View.VISIBLE
             tvPendingBadge?.text = if (count > 99) "99+" else count.toString()
@@ -333,10 +429,7 @@ class FloatingBubbleService : Service() {
             tvPendingBadge?.visibility = View.GONE
         }
 
-        // 2. Actualizar el header del popup
         tvPopupCount?.text = count.toString()
-
-        // 3. Renderizar las tareas en la lista dinámica
         containerTodoItems?.removeAllViews()
 
         if (notes.isEmpty()) {
@@ -350,18 +443,40 @@ class FloatingBubbleService : Service() {
                 val cb = itemView.findViewById<CheckBox>(R.id.cb_todo_complete)
                 val tvTitle = itemView.findViewById<TextView>(R.id.tv_todo_title)
                 val tvSubtitle = itemView.findViewById<TextView>(R.id.tv_todo_subtitle)
+                val tvCategoryTag = itemView.findViewById<TextView>(R.id.tv_category_tag)
+                try {
+                    val color = Color.parseColor(note.colorHex)
+                    viewIndicator.setBackgroundColor(color)
+                    tvCategoryTag.setTextColor(color)
+                } catch (e: Exception) {
+                    viewIndicator.setBackgroundColor(Color.parseColor("#6366F1"))
+                }
+                tvCategoryTag.text = note.category
 
-                tvTitle.text = note.title
-                cb.isChecked = note.isCompleted
-
-                if (note.repeatIntervalMinutes > 0) {
+                if (note.isLocked) {
+                    tvTitle.text = "🔒 Nota protegida con huella"
+                    cb.visibility = View.GONE
                     tvSubtitle.visibility = View.VISIBLE
-                    tvSubtitle.text = "⏱ Avisa cada ${note.repeatIntervalMinutes} min"
-                } else if (note.targetDate != null) {
-                    tvSubtitle.visibility = View.VISIBLE
-                    tvSubtitle.text = "📅 En calendario"
+                    tvSubtitle.text = "Toca 'Abrir App' para desbloquear"
                 } else {
-                    tvSubtitle.visibility = View.GONE
+                    tvTitle.text = note.title
+                    cb.visibility = View.VISIBLE
+                    cb.isChecked = note.isCompleted
+
+                    val (done, total) = note.getSubtaskProgress()
+
+                    if (total > 0) {
+                        tvSubtitle.visibility = View.VISIBLE
+                        tvSubtitle.text = "📋 $done/$total subtareas" + if (note.repeatIntervalMinutes > 0) " • ⏱ ${note.repeatIntervalMinutes}m" else ""
+                    } else if (note.repeatIntervalMinutes > 0) {
+                        tvSubtitle.visibility = View.VISIBLE
+                        tvSubtitle.text = "⏱ Avisa cada ${note.repeatIntervalMinutes} min"
+                    } else if (note.targetDate != null) {
+                        tvSubtitle.visibility = View.VISIBLE
+                        tvSubtitle.text = "📅 En calendario"
+                    } else {
+                        tvSubtitle.visibility = View.GONE
+                    }
                 }
 
                 cb.setOnCheckedChangeListener { _, isChecked ->
@@ -389,6 +504,8 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         serviceScope.cancel()
         hidePopup()
         if (bubbleView != null) {

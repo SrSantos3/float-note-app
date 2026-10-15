@@ -14,6 +14,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!-- Permisos para Ubicación por Red / Wi-Fi -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
     <application
         android:name=".FloatingNotesApp"
@@ -37,6 +43,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Integración con el Menú Compartir de Android (Share Sheet Target) -->
+        <activity
+            android:name=".ShareReceiverActivity"
+            android:exported="true"
+            android:theme="@style/Theme.FloatingNotesApp"
+            android:label="Guardar en FloatNote">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Servicio de la Burbuja Flotante tipo Messenger -->
         <service
             android:name=".service.FloatingBubbleService"
@@ -46,6 +65,18 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Floating quick-access overlay to view and check pending notes over all apps." />
+        </service>
+
+        <!-- Mosaico en la Barra de Ajustes Rápidos de Android (Quick Settings Tile) -->
+        <service
+            android:name=".service.FloatingNotesTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_bubble"
+            android:label="FloatNote"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
         </service>
 
         <!-- Receptor de Alarmas y Notificaciones Periódicas -->
@@ -62,6 +93,17 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Receptor de Estado Wi-Fi / Ubicación -->
+        <receiver
+            android:name=".service.WifiStateReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.net.conn.CONNECTIVITY_CHANGE" />
+                <action android:name="android.net.wifi.STATE_CHANGE" />
             </intent-filter>
         </receiver>
 

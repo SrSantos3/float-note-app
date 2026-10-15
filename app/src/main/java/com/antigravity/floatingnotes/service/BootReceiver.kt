@@ -23,7 +23,10 @@ class BootReceiver : BroadcastReceiver() {
                 }
             }
 
-            // 2. Iniciar el servicio de burbuja flotante si tiene el permiso concedido
+            // 2. Restaurar resumen matutino diario
+            ReminderScheduler.scheduleDailyBriefing(context)
+
+            // 3. Iniciar el servicio de burbuja flotante si tiene el permiso concedido
             val prefs = context.getSharedPreferences("floating_notes_prefs", Context.MODE_PRIVATE)
             val bubbleEnabled = prefs.getBoolean("bubble_overlay_enabled", true)
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/popup_root"
-    android:layout_width="320dp"
+    android:layout_width="330dp"
     android:layout_height="wrap_content"
     android:background="@drawable/bg_floating_card"
     android:elevation="12dp"
@@ -12,7 +12,7 @@
     <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="12dp">
+        android:layout_marginBottom="10dp">
 
         <LinearLayout
             android:layout_width="wrap_content"
@@ -58,7 +58,7 @@
             android:src="@drawable/ic_close" />
     </RelativeLayout>
 
-    <!-- Quick Add Input -->
+    <!-- Quick Add Input + Microphone for Voice Dictation -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -74,7 +74,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:background="@null"
-            android:hint="Añadir tarea rápida..."
+            android:hint="Añadir o dictar tarea..."
             android:imeOptions="actionDone"
             android:inputType="textCapSentences"
             android:paddingStart="8dp"
@@ -83,13 +83,25 @@
             android:textColorHint="#94A3B8"
             android:textSize="13sp" />
 
+        <!-- Botón de Dictado por Voz -->
+        <ImageButton
+            android:id="@+id/btn_speech_to_text"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Dictar por voz"
+            android:padding="6dp"
+            android:src="@drawable/ic_mic" />
+
+        <!-- Botón Añadir -->
         <ImageButton
             android:id="@+id/btn_quick_add"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="2dp"
             android:background="@drawable/bg_floating_bubble"
             android:contentDescription="Añadir"
-            android:padding="8dp"
+            android:padding="6dp"
             android:src="@drawable/ic_add" />
     </LinearLayout>
 
@@ -128,7 +140,7 @@
         android:layout_height="38dp"
         android:layout_marginTop="10dp"
         android:background="#4F46E5"
-        android:text="Abrir App y Calendario"
+        android:text="Abrir App Completa"
         android:textAllCaps="false"
         android:textColor="#FFFFFF"
         android:textSize="13sp"

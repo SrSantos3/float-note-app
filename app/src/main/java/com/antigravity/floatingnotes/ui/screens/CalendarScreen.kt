@@ -22,10 +22,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.fragment.app.FragmentActivity
 import com.antigravity.floatingnotes.data.NoteEntity
 import com.antigravity.floatingnotes.ui.components.AddEditNoteDialog
 import com.antigravity.floatingnotes.ui.components.NoteItemCard
 import com.antigravity.floatingnotes.ui.theme.*
+import com.antigravity.floatingnotes.ui.util.BiometricHelper
 import com.antigravity.floatingnotes.ui.viewmodel.NotesViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,11 +35,14 @@ import java.util.*
 @Composable
 fun CalendarScreen(
     viewModel: NotesViewModel,
+    activity: FragmentActivity,
     modifier: Modifier = Modifier
 ) {
     val selectedDateMillis by viewModel.selectedCalendarDate.collectAsState()
     val notesForSelectedDate by viewModel.notesForSelectedDate.collectAsState()
     val distinctDatesWithNotes by viewModel.distinctDatesWithNotes.collectAsState()
+
+    var unlockedNoteIds by remember { mutableStateOf(setOf<Long>()) }
 
     var calendarMonth by remember {
         mutableStateOf(Calendar.getInstance().apply { timeInMillis = selectedDateMillis })
@@ -204,14 +209,40 @@ fun CalendarScreen(
                 contentPadding = PaddingValues(bottom = 80.dp)
             ) {
                 items(notesForSelectedDate, key = { it.id }) { note ->
+                    val isUnlocked = unlockedNoteIds.contains(note.id)
                     NoteItemCard(
                         note = note,
+                        isUnlocked = isUnlocked,
                         onToggleComplete = { viewModel.toggleComplete(note) },
                         onEdit = {
-                            noteToEdit = note
-                            showAddDialog = true
+                            if (note.isLocked && !isUnlocked) {
+                                BiometricHelper.showBiometricPrompt(
+                                    activity = activity,
+                                    title = "Editar Nota Protegida",
+                                    onSuccess = {
+                                        unlockedNoteIds = unlockedNoteIds + note.id
+                                        noteToEdit = note
+                                        showAddDialog = true
+                                    }
+                                )
+                            } else {
+                                noteToEdit = note
+                                showAddDialog = true
+                            }
                         },
-                        onDelete = { viewModel.deleteNote(note) }
+                        onDelete = { viewModel.deleteNote(note) },
+                        onUnlockRequest = {
+                            BiometricHelper.showBiometricPrompt(
+                                activity = activity,
+                                title = "Desbloquear: ${note.title}",
+                                onSuccess = {
+                                    unlockedNoteIds = unlockedNoteIds + note.id
+                                }
+                            )
+                        },
+                        onToggleSubtask = { subtaskId ->
+                            viewModel.toggleSubtask(note, subtaskId)
+                        }
                     )
                 }
             }
@@ -226,7 +257,7 @@ fun CalendarScreen(
                 showAddDialog = false
                 noteToEdit = null
             },
-            onSave = { title, content, targetDate, targetTime, repeatInterval, isPinned ->
+            onSave = { title, content, targetDate, targetTime, repeatInterval, isPinned, category, colorHex, isUrgentAlarm, snoozeCount, isLocked, subtasksJson, locationName, wifiSsid ->
                 if (noteToEdit != null) {
                     viewModel.updateNote(
                         noteToEdit!!.copy(
@@ -235,7 +266,15 @@ fun CalendarScreen(
                             targetDate = targetDate ?: selectedDateMillis,
                             targetTime = targetTime,
                             repeatIntervalMinutes = repeatInterval,
-                            isPinnedToOverlay = isPinned
+                            isPinnedToOverlay = isPinned,
+                            category = category,
+                            colorHex = colorHex,
+                            isUrgentAlarm = isUrgentAlarm,
+                            snoozeCount = snoozeCount,
+                            isLocked = isLocked,
+                            subtasksJson = subtasksJson,
+                            locationName = locationName,
+                            wifiSsid = wifiSsid
                         )
                     )
                 } else {
@@ -245,7 +284,15 @@ fun CalendarScreen(
                         targetDate = targetDate ?: selectedDateMillis,
                         targetTime = targetTime,
                         repeatIntervalMinutes = repeatInterval,
-                        isPinnedToOverlay = isPinned
+                        isPinnedToOverlay = isPinned,
+                        category = category,
+                        colorHex = colorHex,
+                        isUrgentAlarm = isUrgentAlarm,
+                        snoozeCount = snoozeCount,
+                        isLocked = isLocked,
+                        subtasksJson = subtasksJson,
+                        locationName = locationName,
+                        wifiSsid = wifiSsid
                     )
                 }
             }
@@ -263,7 +310,6 @@ fun CalendarMonthGrid(
     val cal = displayedMonth.clone() as Calendar
     cal.set(Calendar.DAY_OF_MONTH, 1)
 
-    // Ajuste para que la semana empiece en Lunes (Calendar.MONDAY = 2)
     val firstDayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
     val emptySlotsBefore = if (firstDayOfWeek == Calendar.SUNDAY) 6 else firstDayOfWeek - Calendar.MONDAY
 
@@ -347,7 +393,6 @@ fun CalendarMonthGrid(
                             }
                         }
                     } else {
-                        // Celda vacía
                         Spacer(modifier = Modifier.size(36.dp))
                     }
                 }

@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -19,6 +18,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import com.antigravity.floatingnotes.service.ReminderScheduler
 import com.antigravity.floatingnotes.ui.screens.CalendarScreen
 import com.antigravity.floatingnotes.ui.screens.NotesListScreen
 import com.antigravity.floatingnotes.ui.screens.SettingsScreen
@@ -36,23 +37,29 @@ enum class NavigationDestination(val title: String, val icon: ImageVector) {
     SETTINGS("Ajustes", Icons.Default.Settings)
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
 
     private val viewModel: NotesViewModel by viewModels()
 
-    private val requestNotificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        // Permiso de notificaciones gestionado
+        // Permisos gestionados
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestNotificationPermission()
+        requestAppPermissions()
+
+        // Programar resumen matutino diario
+        ReminderScheduler.scheduleDailyBriefing(this)
 
         setContent {
             FloatingNotesTheme {
-                MainAppScaffold(viewModel = viewModel)
+                MainAppScaffold(
+                    viewModel = viewModel,
+                    activity = this
+                )
             }
         }
     }
@@ -62,21 +69,38 @@ class MainActivity : ComponentActivity() {
         viewModel.checkBubbleServiceState()
     }
 
-    private fun requestNotificationPermission() {
+    private fun requestAppPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
             }
+        }
+
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 }
 
 @Composable
-fun MainAppScaffold(viewModel: NotesViewModel) {
+fun MainAppScaffold(
+    viewModel: NotesViewModel,
+    activity: FragmentActivity
+) {
     var currentDestination by remember { mutableStateOf(NavigationDestination.NOTES) }
 
     Scaffold(
@@ -115,12 +139,14 @@ fun MainAppScaffold(viewModel: NotesViewModel) {
         when (currentDestination) {
             NavigationDestination.NOTES -> NotesListScreen(
                 viewModel = viewModel,
+                activity = activity,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             )
             NavigationDestination.CALENDAR -> CalendarScreen(
                 viewModel = viewModel,
+                activity = activity,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)

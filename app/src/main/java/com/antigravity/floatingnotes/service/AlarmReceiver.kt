@@ -6,32 +6,45 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.antigravity.floatingnotes.MainActivity
 import com.antigravity.floatingnotes.R
 import com.antigravity.floatingnotes.data.AppDatabase
+import com.antigravity.floatingnotes.ui.viewmodel.NotesViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
 
     companion object {
         const val CHANNEL_ID = "channel_floating_notes_reminders"
+        const val CHANNEL_URGENT_ID = "channel_floating_notes_urgent_alarm"
+        const val CHANNEL_BRIEFING_ID = "channel_floating_notes_daily_briefing"
         const val ACTION_COMPLETE = "com.antigravity.floatingnotes.ACTION_COMPLETE_NOTE"
-        const val ACTION_SNOOZE = "com.antigravity.floatingnotes.ACTION_SNOOZE_NOTE"
+        const val ACTION_SNOOZE_15 = "com.antigravity.floatingnotes.ACTION_SNOOZE_15"
+        const val ACTION_SNOOZE_SMART = "com.antigravity.floatingnotes.ACTION_SNOOZE_SMART"
+        const val ACTION_DAILY_BRIEFING = "com.antigravity.floatingnotes.ACTION_DAILY_BRIEFING"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Caso: Resumen Matutino Diario
+        if (intent.action == ACTION_DAILY_BRIEFING) {
+            handleDailyBriefing(context, notificationManager)
+            return
+        }
+
         val noteId = intent.getLongExtra(ReminderScheduler.EXTRA_NOTE_ID, -1L)
         if (noteId == -1L) return
 
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
         when (intent.action) {
             ACTION_COMPLETE -> {
-                // El usuario pulsó "Marcar Hecha" en la notificación
                 notificationManager.cancel(noteId.toInt())
                 CoroutineScope(Dispatchers.IO).launch {
                     val db = AppDatabase.getDatabase(context)
@@ -39,45 +52,135 @@ class AlarmReceiver : BroadcastReceiver() {
                     ReminderScheduler.cancelReminder(context, noteId)
                 }
             }
-            ACTION_SNOOZE -> {
-                // El usuario pulsó "Posponer 15 min"
+            ACTION_SNOOZE_15 -> {
                 notificationManager.cancel(noteId.toInt())
-                val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Nota"
-                val content = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_CONTENT) ?: ""
-                val repeatMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, 0)
-                
-                // Reprogramar en 15 minutos
                 CoroutineScope(Dispatchers.IO).launch {
                     val db = AppDatabase.getDatabase(context)
                     val note = db.noteDao().getNoteById(noteId)
                     if (note != null && !note.isCompleted) {
-                        val snoozedNote = note.copy(
-                            targetTime = System.currentTimeMillis() + (15 * 60 * 1000L)
+                        val newSnoozeCount = note.snoozeCount + 1
+                        val updatedNote = note.copy(
+                            targetTime = System.currentTimeMillis() + (15 * 60 * 1000L),
+                            snoozeCount = newSnoozeCount
                         )
-                        ReminderScheduler.scheduleNoteReminder(context, snoozedNote)
+                        db.noteDao().updateNote(updatedNote)
+                        ReminderScheduler.scheduleNoteReminder(context, updatedNote)
+                    }
+                }
+            }
+            ACTION_SNOOZE_SMART -> {
+                notificationManager.cancel(noteId.toInt())
+                CoroutineScope(Dispatchers.IO).launch {
+                    val db = AppDatabase.getDatabase(context)
+                    val note = db.noteDao().getNoteById(noteId)
+                    if (note != null && !note.isCompleted) {
+                        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                        val targetTime = if (currentHour < 17) {
+                            ReminderScheduler.getEveningSnoozeMillis()
+                        } else {
+                            ReminderScheduler.getTomorrowMorningSnoozeMillis()
+                        }
+                        val newSnoozeCount = note.snoozeCount + 1
+                        val updatedNote = note.copy(
+                            targetTime = targetTime,
+                            snoozeCount = newSnoozeCount
+                        )
+                        db.noteDao().updateNote(updatedNote)
+                        ReminderScheduler.scheduleNoteReminder(context, updatedNote)
                     }
                 }
             }
             else -> {
-                // Es el disparo de la alarma programada o periódica
+                // Disparo de la alarma programada o periódica
                 val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Recordatorio de Nota"
                 val content = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_CONTENT) ?: ""
                 val repeatMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, 0)
+                val isUrgent = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_URGENT_ALARM, false)
+                val snoozeCount = intent.getIntExtra(ReminderScheduler.EXTRA_SNOOZE_COUNT, 0)
 
-                // Verificar si la nota no fue completada antes de lanzar la notificación
+                // 🌙 VERIFICAR HORAS DE SILENCIO (MODO SUEÑO)
+                if (ReminderScheduler.isQuietHours(context)) {
+                    // Durante las horas de silencio, reprogramar automáticamente para cuando termine la noche
+                    val quietEndMillis = ReminderScheduler.getNextQuietHoursEndMillis(context)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        val db = AppDatabase.getDatabase(context)
+                        val note = db.noteDao().getNoteById(noteId)
+                        if (note != null && !note.isCompleted) {
+                            val deferredNote = note.copy(targetTime = quietEndMillis)
+                            ReminderScheduler.scheduleNoteReminder(context, deferredNote)
+                        }
+                    }
+                    return
+                }
+
                 CoroutineScope(Dispatchers.IO).launch {
                     val db = AppDatabase.getDatabase(context)
                     val note = db.noteDao().getNoteById(noteId)
                     if (note != null && !note.isCompleted) {
-                        showNotification(context, notificationManager, noteId, title, content, repeatMinutes)
+                        showNotification(
+                            context,
+                            notificationManager,
+                            noteId,
+                            title,
+                            content,
+                            repeatMinutes,
+                            isUrgent,
+                            note.snoozeCount
+                        )
 
-                        // Si tiene intervalo periódico (cada X minutos), reprogramar la siguiente notificación
                         if (repeatMinutes > 0) {
-                            ReminderScheduler.scheduleNoteReminder(context, note)
+                            val updatedNote = note.copy(snoozeCount = note.snoozeCount + 1)
+                            db.noteDao().updateNote(updatedNote)
+                            ReminderScheduler.scheduleNoteReminder(context, updatedNote)
                         }
                     }
                 }
             }
+        }
+    }
+
+    private fun handleDailyBriefing(context: Context, manager: NotificationManager) {
+        createNotificationChannels(context, manager)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val db = AppDatabase.getDatabase(context)
+            val todayStart = NotesViewModel.getStartOfDay(System.currentTimeMillis())
+            val todayEnd = todayStart + (24 * 60 * 60 * 1000L) - 1
+
+            val todayNotes = db.noteDao().getActiveNotesForDateRangeSync(todayStart, todayEnd)
+            val count = todayNotes.size
+            val urgentCount = todayNotes.count { it.isUrgentAlarm }
+
+            val briefingText = when {
+                count == 0 -> "No tienes tareas programadas para hoy. ¡Disfruta de tu día! ✨"
+                urgentCount > 0 -> "Tienes $count tareas para hoy ($urgentCount con alarma urgente). ¡A por ellas!"
+                else -> "Tienes $count tareas pendientes para hoy. Toca para verlas."
+            }
+
+            val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                777777,
+                openAppIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, CHANNEL_BRIEFING_ID)
+                .setSmallIcon(R.drawable.ic_calendar)
+                .setContentTitle("Buenos días ☀️ Tu resumen de hoy")
+                .setContentText(briefingText)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(briefingText))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            manager.notify(777777, notification)
+
+            // Reprogramar para la mañana siguiente
+            ReminderScheduler.scheduleDailyBriefing(context)
         }
     }
 
@@ -87,11 +190,14 @@ class AlarmReceiver : BroadcastReceiver() {
         noteId: Long,
         title: String,
         content: String,
-        repeatMinutes: Int
+        repeatMinutes: Int,
+        isUrgent: Boolean,
+        snoozeCount: Int
     ) {
-        createNotificationChannel(context, notificationManager)
+        createNotificationChannels(context, notificationManager)
 
-        // Intent al tocar la notificación para abrir la app
+        val channelId = if (isUrgent) CHANNEL_URGENT_ID else CHANNEL_ID
+
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -102,7 +208,6 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Acción: Marcar Hecha
         val completeIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_COMPLETE
             putExtra(ReminderScheduler.EXTRA_NOTE_ID, noteId)
@@ -114,44 +219,68 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Acción: Posponer 15 min
-        val snoozeIntent = Intent(context, AlarmReceiver::class.java).apply {
-            action = ACTION_SNOOZE
+        val snooze15Intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_SNOOZE_15
             putExtra(ReminderScheduler.EXTRA_NOTE_ID, noteId)
-            putExtra(ReminderScheduler.EXTRA_NOTE_TITLE, title)
-            putExtra(ReminderScheduler.EXTRA_NOTE_CONTENT, content)
-            putExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, repeatMinutes)
         }
-        val snoozePendingIntent = PendingIntent.getBroadcast(
+        val snooze15PendingIntent = PendingIntent.getBroadcast(
             context,
             (noteId * 10 + 2).toInt(),
-            snoozeIntent,
+            snooze15Intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val intervalInfo = if (repeatMinutes > 0) " (Repite cada $repeatMinutes min)" else ""
+        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val smartSnoozeLabel = if (currentHour < 17) "Esta tarde (18h)" else "Mañana (9h)"
+        val smartSnoozeIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_SNOOZE_SMART
+            putExtra(ReminderScheduler.EXTRA_NOTE_ID, noteId)
+        }
+        val smartSnoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (noteId * 10 + 3).toInt(),
+            smartSnoozeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val antiProcrastinationMsg = when {
+            snoozeCount >= 5 -> "\n🚨 ¡ALERTA! Llevas posponiendo esto $snoozeCount VECES. ¡Hazlo de una vez!"
+            snoozeCount in 2..4 -> "\n👀 Pospuesta $snoozeCount veces hoy. ¡No lo dejes pasar!"
+            snoozeCount == 1 -> "\n⏱️ Pospuesta 1 vez."
+            else -> ""
+        }
+
+        val repeatInfo = if (repeatMinutes > 0) " (Repite cada $repeatMinutes min)" else ""
+        val urgencyPrefix = if (isUrgent) "🚨 [ALARMA URGENTE] " else ""
+        val fullContent = if (content.isNotBlank()) "$content$repeatInfo$antiProcrastinationMsg" else "Tarea pendiente$repeatInfo$antiProcrastinationMsg"
+
+        val notificationBuilder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_bubble)
-            .setContentTitle(title)
-            .setContentText(content.ifBlank { "Tienes esta tarea pendiente$intervalInfo" })
-            .setStyle(NotificationCompat.BigTextStyle().bigText(
-                if (content.isNotBlank()) "$content\n$intervalInfo" else "Tienes esta tarea pendiente$intervalInfo"
-            ))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentTitle("$urgencyPrefix$title")
+            .setContentText(fullContent)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(fullContent))
+            .setPriority(if (isUrgent) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
+            .setCategory(if (isUrgent) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
             .setContentIntent(openAppPendingIntent)
             .setAutoCancel(true)
             .addAction(R.drawable.ic_check, "Completar", completePendingIntent)
-            .addAction(R.drawable.ic_close, "Posponer 15m", snoozePendingIntent)
-            .build()
+            .addAction(R.drawable.ic_close, "+15 min", snooze15PendingIntent)
+            .addAction(R.drawable.ic_calendar, smartSnoozeLabel, smartSnoozePendingIntent)
 
-        notificationManager.notify(noteId.toInt(), notification)
+        if (isUrgent) {
+            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+            notificationBuilder
+                .setSound(alarmSound)
+                .setVibrate(longArrayOf(0, 500, 200, 500, 200, 1000))
+        }
+
+        notificationManager.notify(noteId.toInt(), notificationBuilder.build())
     }
 
-    private fun createNotificationChannel(context: Context, manager: NotificationManager) {
+    private fun createNotificationChannels(context: Context, manager: NotificationManager) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val standardChannel = NotificationChannel(
                 CHANNEL_ID,
                 context.getString(R.string.channel_reminders_name),
                 NotificationManager.IMPORTANCE_HIGH
@@ -159,7 +288,36 @@ class AlarmReceiver : BroadcastReceiver() {
                 description = context.getString(R.string.channel_reminders_desc)
                 enableVibration(true)
             }
-            manager.createNotificationChannel(channel)
+
+            val urgentChannel = NotificationChannel(
+                CHANNEL_URGENT_ID,
+                "Alarmas Urgentes (Anti-Procrastinación)",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alarmas críticas que suenan insistentemente para tareas que no puedes posponer."
+                val audioAttributes = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(AudioAttributes.USAGE_ALARM)
+                    .build()
+                val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
+                setSound(alarmSound, audioAttributes)
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 1000)
+            }
+
+            val briefingChannel = NotificationChannel(
+                CHANNEL_BRIEFING_ID,
+                "Resumen Matutino Diario",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notificación diaria con el resumen de tareas al comenzar el día."
+                enableVibration(true)
+            }
+
+            manager.createNotificationChannel(standardChannel)
+            manager.createNotificationChannel(urgentChannel)
+            manager.createNotificationChannel(briefingChannel)
         }
     }
 }
