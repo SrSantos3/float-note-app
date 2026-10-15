@@ -81,14 +81,28 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _isQuietHoursEnabled = MutableStateFlow(prefs.getBoolean(ReminderScheduler.KEY_QUIET_HOURS_ENABLED, true))
     val isQuietHoursEnabled: StateFlow<Boolean> = _isQuietHoursEnabled.asStateFlow()
 
-    private val _quietHoursStart = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_START, 23))
-    val quietHoursStart: StateFlow<Int> = _quietHoursStart.asStateFlow()
+    private val _quietHoursStartHour = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_START_HOUR, prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_START, 23)))
+    val quietHoursStartHour: StateFlow<Int> = _quietHoursStartHour.asStateFlow()
+    val quietHoursStart: StateFlow<Int> = _quietHoursStartHour.asStateFlow()
 
-    private val _quietHoursEnd = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_END, 8))
-    val quietHoursEnd: StateFlow<Int> = _quietHoursEnd.asStateFlow()
+    private val _quietHoursStartMinute = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_START_MINUTE, 0))
+    val quietHoursStartMinute: StateFlow<Int> = _quietHoursStartMinute.asStateFlow()
+
+    private val _quietHoursEndHour = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_END_HOUR, prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_END, 8)))
+    val quietHoursEndHour: StateFlow<Int> = _quietHoursEndHour.asStateFlow()
+    val quietHoursEnd: StateFlow<Int> = _quietHoursEndHour.asStateFlow()
+
+    private val _quietHoursEndMinute = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_QUIET_HOURS_END_MINUTE, 0))
+    val quietHoursEndMinute: StateFlow<Int> = _quietHoursEndMinute.asStateFlow()
 
     private val _isDailyBriefingEnabled = MutableStateFlow(prefs.getBoolean(ReminderScheduler.KEY_DAILY_BRIEFING_ENABLED, true))
     val isDailyBriefingEnabled: StateFlow<Boolean> = _isDailyBriefingEnabled.asStateFlow()
+
+    private val _dailyBriefingHour = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_DAILY_BRIEFING_HOUR, 8))
+    val dailyBriefingHour: StateFlow<Int> = _dailyBriefingHour.asStateFlow()
+
+    private val _dailyBriefingMinute = MutableStateFlow(prefs.getInt(ReminderScheduler.KEY_DAILY_BRIEFING_MINUTE, 30))
+    val dailyBriefingMinute: StateFlow<Int> = _dailyBriefingMinute.asStateFlow()
 
     init {
         checkBubbleServiceState()
@@ -135,21 +149,47 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setQuietHours(enabled: Boolean, startHour: Int = _quietHoursStart.value, endHour: Int = _quietHoursEnd.value) {
-        prefs.edit()
-            .putBoolean(ReminderScheduler.KEY_QUIET_HOURS_ENABLED, enabled)
-            .putInt(ReminderScheduler.KEY_QUIET_HOURS_START, startHour)
-            .putInt(ReminderScheduler.KEY_QUIET_HOURS_END, endHour)
-            .apply()
+    fun setQuietHours(enabled: Boolean) {
+        prefs.edit().putBoolean(ReminderScheduler.KEY_QUIET_HOURS_ENABLED, enabled).apply()
         _isQuietHoursEnabled.value = enabled
-        _quietHoursStart.value = startHour
-        _quietHoursEnd.value = endHour
+    }
+
+    fun setQuietHoursStart(hour: Int, minute: Int) {
+        prefs.edit()
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_START, hour)
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_START_HOUR, hour)
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_START_MINUTE, minute)
+            .apply()
+        _quietHoursStartHour.value = hour
+        _quietHoursStartMinute.value = minute
+    }
+
+    fun setQuietHoursEnd(hour: Int, minute: Int) {
+        prefs.edit()
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_END, hour)
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_END_HOUR, hour)
+            .putInt(ReminderScheduler.KEY_QUIET_HOURS_END_MINUTE, minute)
+            .apply()
+        _quietHoursEndHour.value = hour
+        _quietHoursEndMinute.value = minute
     }
 
     fun setDailyBriefing(enabled: Boolean) {
         prefs.edit().putBoolean(ReminderScheduler.KEY_DAILY_BRIEFING_ENABLED, enabled).apply()
         _isDailyBriefingEnabled.value = enabled
         if (enabled) {
+            ReminderScheduler.scheduleDailyBriefing(getApplication())
+        }
+    }
+
+    fun setDailyBriefingTime(hour: Int, minute: Int) {
+        prefs.edit()
+            .putInt(ReminderScheduler.KEY_DAILY_BRIEFING_HOUR, hour)
+            .putInt(ReminderScheduler.KEY_DAILY_BRIEFING_MINUTE, minute)
+            .apply()
+        _dailyBriefingHour.value = hour
+        _dailyBriefingMinute.value = minute
+        if (_isDailyBriefingEnabled.value) {
             ReminderScheduler.scheduleDailyBriefing(getApplication())
         }
     }

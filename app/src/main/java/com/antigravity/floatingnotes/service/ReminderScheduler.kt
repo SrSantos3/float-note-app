@@ -23,6 +23,10 @@ object ReminderScheduler {
     const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
     const val KEY_QUIET_HOURS_START = "quiet_hours_start" // default 23
     const val KEY_QUIET_HOURS_END = "quiet_hours_end"     // default 8
+    const val KEY_QUIET_HOURS_START_HOUR = "quiet_hours_start_hour" // default 23
+    const val KEY_QUIET_HOURS_START_MINUTE = "quiet_hours_start_minute" // default 0
+    const val KEY_QUIET_HOURS_END_HOUR = "quiet_hours_end_hour" // default 8
+    const val KEY_QUIET_HOURS_END_MINUTE = "quiet_hours_end_minute" // default 0
 
     const val KEY_DAILY_BRIEFING_ENABLED = "daily_briefing_enabled"
     const val KEY_DAILY_BRIEFING_HOUR = "daily_briefing_hour" // default 8
@@ -119,27 +123,33 @@ object ReminderScheduler {
         val enabled = prefs.getBoolean(KEY_QUIET_HOURS_ENABLED, true)
         if (!enabled) return false
 
-        val startHour = prefs.getInt(KEY_QUIET_HOURS_START, 23)
-        val endHour = prefs.getInt(KEY_QUIET_HOURS_END, 8)
+        val startHour = prefs.getInt(KEY_QUIET_HOURS_START_HOUR, prefs.getInt(KEY_QUIET_HOURS_START, 23))
+        val startMinute = prefs.getInt(KEY_QUIET_HOURS_START_MINUTE, 0)
+        val endHour = prefs.getInt(KEY_QUIET_HOURS_END_HOUR, prefs.getInt(KEY_QUIET_HOURS_END, 8))
+        val endMinute = prefs.getInt(KEY_QUIET_HOURS_END_MINUTE, 0)
 
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val cal = Calendar.getInstance()
+        val currentMinutesOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+        val startMinutesOfDay = startHour * 60 + startMinute
+        val endMinutesOfDay = endHour * 60 + endMinute
 
-        return if (startHour > endHour) {
-            // Ejemplo: 23:00 a 08:00
-            currentHour >= startHour || currentHour < endHour
+        return if (startMinutesOfDay > endMinutesOfDay) {
+            // Ejemplo: 23:00 (1380m) a 08:00 (480m)
+            currentMinutesOfDay >= startMinutesOfDay || currentMinutesOfDay < endMinutesOfDay
         } else {
-            // Ejemplo: 01:00 a 07:00
-            currentHour in startHour until endHour
+            // Ejemplo: 01:00 (60m) a 07:00 (420m)
+            currentMinutesOfDay in startMinutesOfDay until endMinutesOfDay
         }
     }
 
     fun getNextQuietHoursEndMillis(context: Context): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val endHour = prefs.getInt(KEY_QUIET_HOURS_END, 8)
+        val endHour = prefs.getInt(KEY_QUIET_HOURS_END_HOUR, prefs.getInt(KEY_QUIET_HOURS_END, 8))
+        val endMinute = prefs.getInt(KEY_QUIET_HOURS_END_MINUTE, 0)
 
         val cal = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, endHour)
-            set(Calendar.MINUTE, 0)
+            set(Calendar.MINUTE, endMinute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) {

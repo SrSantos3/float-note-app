@@ -3,6 +3,7 @@ package com.antigravity.floatingnotes.ui.screens
 import android.Manifest
 import android.app.AlarmManager
 import android.app.NotificationManager
+import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,6 +11,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
+import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -50,10 +52,14 @@ fun SettingsScreen(
     val hasBiometricHardware = BiometricHelper.canAuthenticate(context)
 
     val isQuietHoursEnabled by viewModel.isQuietHoursEnabled.collectAsState()
-    val quietHoursStart by viewModel.quietHoursStart.collectAsState()
-    val quietHoursEnd by viewModel.quietHoursEnd.collectAsState()
+    val quietHoursStartHour by viewModel.quietHoursStartHour.collectAsState()
+    val quietHoursStartMinute by viewModel.quietHoursStartMinute.collectAsState()
+    val quietHoursEndHour by viewModel.quietHoursEndHour.collectAsState()
+    val quietHoursEndMinute by viewModel.quietHoursEndMinute.collectAsState()
 
     val isDailyBriefingEnabled by viewModel.isDailyBriefingEnabled.collectAsState()
+    val dailyBriefingHour by viewModel.dailyBriefingHour.collectAsState()
+    val dailyBriefingMinute by viewModel.dailyBriefingMinute.collectAsState()
 
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
     val canExactAlarm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -121,7 +127,7 @@ fun SettingsScreen(
             color = TextPrimary
         )
         Text(
-            text = "Pausa automáticamente notificaciones y alarmas periódicas de noche para que no te despierten:",
+            text = "Pausa notificaciones y alarmas a tu medida según tus horas de sueño o trabajo:",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -141,12 +147,14 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Silenciar durante la noche",
+                            text = "Silenciar durante el descanso",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary
                         )
                         Text(
-                            text = if (isQuietHoursEnabled) "De ${quietHoursStart}:00 a ${quietHoursEnd}:00 (reanudará al despertar)" else "Desactivado (las alarmas sonarán a cualquier hora)",
+                            text = if (isQuietHoursEnabled) {
+                                String.format(Locale.getDefault(), "De %02d:%02d a %02d:%02d (reanudará al despertar)", quietHoursStartHour, quietHoursStartMinute, quietHoursEndHour, quietHoursEndMinute)
+                            } else "Desactivado (las alarmas sonarán a cualquier hora)",
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isQuietHoursEnabled) CyanAccent else TextSecondary
                         )
@@ -163,13 +171,95 @@ fun SettingsScreen(
                         )
                     )
                 }
+
+                if (isQuietHoursEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Configura tu horario personalizado (toca para cambiar):",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Tarjeta Inicio Silencio
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, h, m -> viewModel.setQuietHoursStart(h, m) },
+                                        quietHoursStartHour,
+                                        quietHoursStartMinute,
+                                        true
+                                    ).show()
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            color = DarkSurfaceElevated,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, CyanAccent.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.Bedtime, contentDescription = null, tint = CyanAccent, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Inicio sueño", fontSize = 11.sp, color = TextSecondary)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = String.format(Locale.getDefault(), "%02d:%02d", quietHoursStartHour, quietHoursStartMinute),
+                                    fontSize = 20.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text("Toca para elegir hora", fontSize = 10.sp, color = CyanAccent)
+                            }
+                        }
+
+                        // Tarjeta Fin Silencio
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, h, m -> viewModel.setQuietHoursEnd(h, m) },
+                                        quietHoursEndHour,
+                                        quietHoursEndMinute,
+                                        true
+                                    ).show()
+                                },
+                            shape = RoundedCornerShape(14.dp),
+                            color = DarkSurfaceElevated,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.WbSunny, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Fin sueño", fontSize = 11.sp, color = TextSecondary)
+                                }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = String.format(Locale.getDefault(), "%02d:%02d", quietHoursEndHour, quietHoursEndMinute),
+                                    fontSize = 20.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                                Text("Toca para elegir hora", fontSize = 10.sp, color = AmberWarning)
+                            }
+                        }
+                    }
+                }
             }
         }
 
         Spacer(modifier = Modifier.height(20.dp))
 
         // ==========================================
-        // ☀️ RESUMEN MATUTINO DIARIO
+        // ☀️ RESUMEN MATUTINO DIARIO (CONFIGURABLE)
         // ==========================================
         Text(
             text = "☀️ Resumen Matutino Diario",
@@ -177,7 +267,7 @@ fun SettingsScreen(
             color = TextPrimary
         )
         Text(
-            text = "Recibe un aviso matutino con tus tareas del día y las alarmas críticas pendientes:",
+            text = "Recibe un informe matutino con tus tareas del día y alarmas críticas al despertar:",
             style = MaterialTheme.typography.bodyMedium,
             color = TextSecondary
         )
@@ -197,12 +287,14 @@ fun SettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Aviso diario matutino (08:30 AM)",
+                            text = "Aviso diario matutino",
                             style = MaterialTheme.typography.titleMedium,
                             color = TextPrimary
                         )
                         Text(
-                            text = if (isDailyBriefingEnabled) "Activo cada mañana con tu resumen" else "Desactivado",
+                            text = if (isDailyBriefingEnabled) {
+                                String.format(Locale.getDefault(), "Programado a las %02d:%02d cada mañana", dailyBriefingHour, dailyBriefingMinute)
+                            } else "Desactivado",
                             style = MaterialTheme.typography.bodyMedium,
                             color = if (isDailyBriefingEnabled) EmeraldSuccess else TextSecondary
                         )
@@ -220,7 +312,71 @@ fun SettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                if (isDailyBriefingEnabled) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                TimePickerDialog(
+                                    context,
+                                    { _, h, m -> viewModel.setDailyBriefingTime(h, m) },
+                                    dailyBriefingHour,
+                                    dailyBriefingMinute,
+                                    true
+                                ).show()
+                            },
+                        shape = RoundedCornerShape(14.dp),
+                        color = DarkSurfaceElevated,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    imageVector = Icons.Default.Alarm,
+                                    contentDescription = null,
+                                    tint = EmeraldSuccess,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Hora de entrega del resumen",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextPrimary,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = "Toca para ajustar la hora a la que te levantas",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = TextSecondary
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = EmeraldSuccess.copy(alpha = 0.18f)
+                            ) {
+                                Text(
+                                    text = String.format(Locale.getDefault(), "⏰ %02d:%02d", dailyBriefingHour, dailyBriefingMinute),
+                                    fontSize = 15.sp,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    color = EmeraldSuccess,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
 
                 Button(
                     onClick = {
