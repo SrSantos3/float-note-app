@@ -99,30 +99,39 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun checkBubbleServiceState() {
-        val context = getApplication<Application>()
-        val hasOverlayPermission = Settings.canDrawOverlays(context)
-        val enabled = prefs.getBoolean("bubble_overlay_enabled", false)
-        _isBubbleServiceEnabled.value = hasOverlayPermission && enabled
+        try {
+            val context = getApplication<Application>()
+            val hasOverlayPermission = Settings.canDrawOverlays(context)
+            val enabled = prefs.getBoolean("bubble_overlay_enabled", false)
+            _isBubbleServiceEnabled.value = hasOverlayPermission && enabled
+        } catch (e: Exception) {
+            e.printStackTrace()
+            _isBubbleServiceEnabled.value = false
+        }
     }
 
     fun setBubbleServiceEnabled(enable: Boolean) {
-        val context = getApplication<Application>()
-        if (enable && !Settings.canDrawOverlays(context)) {
-            return
-        }
-
-        prefs.edit().putBoolean("bubble_overlay_enabled", enable).apply()
-        _isBubbleServiceEnabled.value = enable
-
-        val serviceIntent = Intent(context, FloatingBubbleService::class.java)
-        if (enable) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
+        try {
+            val context = getApplication<Application>()
+            if (enable && !Settings.canDrawOverlays(context)) {
+                return
             }
-        } else {
-            context.stopService(serviceIntent)
+
+            prefs.edit().putBoolean("bubble_overlay_enabled", enable).apply()
+            _isBubbleServiceEnabled.value = enable
+
+            val serviceIntent = Intent(context, FloatingBubbleService::class.java)
+            if (enable) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+            } else {
+                context.stopService(serviceIntent)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

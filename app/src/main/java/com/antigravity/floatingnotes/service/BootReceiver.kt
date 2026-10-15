@@ -13,31 +13,47 @@ import kotlinx.coroutines.launch
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == "android.intent.action.QUICKBOOT_POWERON") {
-            // 1. Restaurar alarmas de notas activas
-            CoroutineScope(Dispatchers.IO).launch {
-                val db = AppDatabase.getDatabase(context)
-                val activeNotes = db.noteDao().getActiveRepeatingNotes()
-                for (note in activeNotes) {
-                    ReminderScheduler.scheduleNoteReminder(context, note)
+        try {
+            if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == "android.intent.action.QUICKBOOT_POWERON") {
+                // 1. Restaurar alarmas de notas activas
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val db = AppDatabase.getDatabase(context)
+                        val activeNotes = db.noteDao().getActiveRepeatingNotes()
+                        for (note in activeNotes) {
+                            ReminderScheduler.scheduleNoteReminder(context, note)
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+
+                // 2. Restaurar resumen matutino diario
+                try {
+                    ReminderScheduler.scheduleDailyBriefing(context)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                // 3. Iniciar el servicio de burbuja flotante si tiene el permiso concedido
+                try {
+                    val prefs = context.getSharedPreferences("floating_notes_prefs", Context.MODE_PRIVATE)
+                    val bubbleEnabled = prefs.getBoolean("bubble_overlay_enabled", false)
+
+                    if (bubbleEnabled && Settings.canDrawOverlays(context)) {
+                        val serviceIntent = Intent(context, FloatingBubbleService::class.java)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(serviceIntent)
+                        } else {
+                            context.startService(serviceIntent)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
             }
-
-            // 2. Restaurar resumen matutino diario
-            ReminderScheduler.scheduleDailyBriefing(context)
-
-            // 3. Iniciar el servicio de burbuja flotante si tiene el permiso concedido
-            val prefs = context.getSharedPreferences("floating_notes_prefs", Context.MODE_PRIVATE)
-            val bubbleEnabled = prefs.getBoolean("bubble_overlay_enabled", true)
-
-            if (bubbleEnabled && Settings.canDrawOverlays(context)) {
-                val serviceIntent = Intent(context, FloatingBubbleService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
-            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

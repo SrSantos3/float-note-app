@@ -66,7 +66,8 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.navigation.compose)
 
-    // Biometrics / Fingerprint
+    // AppCompat & Biometrics
+    implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("androidx.biometric:biometric:1.1.0")
 
     // Room Database

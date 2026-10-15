@@ -17,8 +17,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.core.content.ContextCompat
+import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.FragmentActivity
+import androidx.core.content.ContextCompat
 import com.antigravity.floatingnotes.service.ReminderScheduler
 import com.antigravity.floatingnotes.ui.screens.CalendarScreen
 import com.antigravity.floatingnotes.ui.screens.NotesListScreen
@@ -37,7 +38,7 @@ enum class NavigationDestination(val title: String, val icon: ImageVector) {
     SETTINGS("Ajustes", Icons.Default.Settings)
 }
 
-class MainActivity : FragmentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private val viewModel: NotesViewModel by viewModels()
 
@@ -49,10 +50,17 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestAppPermissions()
+        try {
+            requestAppPermissions()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
-        // Programar resumen matutino diario
-        ReminderScheduler.scheduleDailyBriefing(this)
+        try {
+            ReminderScheduler.scheduleDailyBriefing(this)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         setContent {
             FloatingNotesTheme {
@@ -66,7 +74,11 @@ class MainActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkBubbleServiceState()
+        try {
+            viewModel.checkBubbleServiceState()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun requestAppPermissions() {

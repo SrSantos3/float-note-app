@@ -32,110 +32,134 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
 
-        // Caso: Resumen Matutino Diario
-        if (intent.action == ACTION_DAILY_BRIEFING) {
-            handleDailyBriefing(context, notificationManager)
-            return
-        }
-
-        val noteId = intent.getLongExtra(ReminderScheduler.EXTRA_NOTE_ID, -1L)
-        if (noteId == -1L) return
-
-        when (intent.action) {
-            ACTION_COMPLETE -> {
-                notificationManager.cancel(noteId.toInt())
-                CoroutineScope(Dispatchers.IO).launch {
-                    val db = AppDatabase.getDatabase(context)
-                    db.noteDao().setCompletionStatus(noteId, true)
-                    ReminderScheduler.cancelReminder(context, noteId)
-                }
+            // Caso: Resumen Matutino Diario
+            if (intent.action == ACTION_DAILY_BRIEFING) {
+                handleDailyBriefing(context, notificationManager)
+                return
             }
-            ACTION_SNOOZE_15 -> {
-                notificationManager.cancel(noteId.toInt())
-                CoroutineScope(Dispatchers.IO).launch {
-                    val db = AppDatabase.getDatabase(context)
-                    val note = db.noteDao().getNoteById(noteId)
-                    if (note != null && !note.isCompleted) {
-                        val newSnoozeCount = note.snoozeCount + 1
-                        val updatedNote = note.copy(
-                            targetTime = System.currentTimeMillis() + (15 * 60 * 1000L),
-                            snoozeCount = newSnoozeCount
-                        )
-                        db.noteDao().updateNote(updatedNote)
-                        ReminderScheduler.scheduleNoteReminder(context, updatedNote)
-                    }
-                }
-            }
-            ACTION_SNOOZE_SMART -> {
-                notificationManager.cancel(noteId.toInt())
-                CoroutineScope(Dispatchers.IO).launch {
-                    val db = AppDatabase.getDatabase(context)
-                    val note = db.noteDao().getNoteById(noteId)
-                    if (note != null && !note.isCompleted) {
-                        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                        val targetTime = if (currentHour < 17) {
-                            ReminderScheduler.getEveningSnoozeMillis()
-                        } else {
-                            ReminderScheduler.getTomorrowMorningSnoozeMillis()
-                        }
-                        val newSnoozeCount = note.snoozeCount + 1
-                        val updatedNote = note.copy(
-                            targetTime = targetTime,
-                            snoozeCount = newSnoozeCount
-                        )
-                        db.noteDao().updateNote(updatedNote)
-                        ReminderScheduler.scheduleNoteReminder(context, updatedNote)
-                    }
-                }
-            }
-            else -> {
-                // Disparo de la alarma programada o periódica
-                val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Recordatorio de Nota"
-                val content = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_CONTENT) ?: ""
-                val repeatMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, 0)
-                val isUrgent = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_URGENT_ALARM, false)
-                val snoozeCount = intent.getIntExtra(ReminderScheduler.EXTRA_SNOOZE_COUNT, 0)
 
-                // 🌙 VERIFICAR HORAS DE SILENCIO (MODO SUEÑO)
-                if (ReminderScheduler.isQuietHours(context)) {
-                    // Durante las horas de silencio, reprogramar automáticamente para cuando termine la noche
-                    val quietEndMillis = ReminderScheduler.getNextQuietHoursEndMillis(context)
+            val noteId = intent.getLongExtra(ReminderScheduler.EXTRA_NOTE_ID, -1L)
+            if (noteId == -1L) return
+
+            when (intent.action) {
+                ACTION_COMPLETE -> {
+                    notificationManager.cancel(noteId.toInt())
                     CoroutineScope(Dispatchers.IO).launch {
-                        val db = AppDatabase.getDatabase(context)
-                        val note = db.noteDao().getNoteById(noteId)
-                        if (note != null && !note.isCompleted) {
-                            val deferredNote = note.copy(targetTime = quietEndMillis)
-                            ReminderScheduler.scheduleNoteReminder(context, deferredNote)
+                        try {
+                            val db = AppDatabase.getDatabase(context)
+                            db.noteDao().setCompletionStatus(noteId, true)
+                            ReminderScheduler.cancelReminder(context, noteId)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
-                    return
                 }
+                ACTION_SNOOZE_15 -> {
+                    notificationManager.cancel(noteId.toInt())
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val db = AppDatabase.getDatabase(context)
+                            val note = db.noteDao().getNoteById(noteId)
+                            if (note != null && !note.isCompleted) {
+                                val newSnoozeCount = note.snoozeCount + 1
+                                val updatedNote = note.copy(
+                                    targetTime = System.currentTimeMillis() + (15 * 60 * 1000L),
+                                    snoozeCount = newSnoozeCount
+                                )
+                                db.noteDao().updateNote(updatedNote)
+                                ReminderScheduler.scheduleNoteReminder(context, updatedNote)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+                ACTION_SNOOZE_SMART -> {
+                    notificationManager.cancel(noteId.toInt())
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val db = AppDatabase.getDatabase(context)
+                            val note = db.noteDao().getNoteById(noteId)
+                            if (note != null && !note.isCompleted) {
+                                val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                                val targetTime = if (currentHour < 17) {
+                                    ReminderScheduler.getEveningSnoozeMillis()
+                                } else {
+                                    ReminderScheduler.getTomorrowMorningSnoozeMillis()
+                                }
+                                val newSnoozeCount = note.snoozeCount + 1
+                                val updatedNote = note.copy(
+                                    targetTime = targetTime,
+                                    snoozeCount = newSnoozeCount
+                                )
+                                db.noteDao().updateNote(updatedNote)
+                                ReminderScheduler.scheduleNoteReminder(context, updatedNote)
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+                else -> {
+                    // Disparo de la alarma programada o periódica
+                    val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Recordatorio de Nota"
+                    val content = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_CONTENT) ?: ""
+                    val repeatMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, 0)
+                    val isUrgent = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_URGENT_ALARM, false)
+                    val snoozeCount = intent.getIntExtra(ReminderScheduler.EXTRA_SNOOZE_COUNT, 0)
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    val db = AppDatabase.getDatabase(context)
-                    val note = db.noteDao().getNoteById(noteId)
-                    if (note != null && !note.isCompleted) {
-                        showNotification(
-                            context,
-                            notificationManager,
-                            noteId,
-                            title,
-                            content,
-                            repeatMinutes,
-                            isUrgent,
-                            note.snoozeCount
-                        )
+                    // 🌙 VERIFICAR HORAS DE SILENCIO (MODO SUEÑO)
+                    if (ReminderScheduler.isQuietHours(context)) {
+                        // Durante las horas de silencio, reprogramar automáticamente para cuando termine la noche
+                        val quietEndMillis = ReminderScheduler.getNextQuietHoursEndMillis(context)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                val db = AppDatabase.getDatabase(context)
+                                val note = db.noteDao().getNoteById(noteId)
+                                if (note != null && !note.isCompleted) {
+                                    val deferredNote = note.copy(targetTime = quietEndMillis)
+                                    ReminderScheduler.scheduleNoteReminder(context, deferredNote)
+                                }
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }
+                        return
+                    }
 
-                        if (repeatMinutes > 0) {
-                            val updatedNote = note.copy(snoozeCount = note.snoozeCount + 1)
-                            db.noteDao().updateNote(updatedNote)
-                            ReminderScheduler.scheduleNoteReminder(context, updatedNote)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val db = AppDatabase.getDatabase(context)
+                            val note = db.noteDao().getNoteById(noteId)
+                            if (note != null && !note.isCompleted) {
+                                showNotification(
+                                    context,
+                                    notificationManager,
+                                    noteId,
+                                    title,
+                                    content,
+                                    repeatMinutes,
+                                    isUrgent,
+                                    note.snoozeCount
+                                )
+
+                                if (repeatMinutes > 0) {
+                                    val updatedNote = note.copy(snoozeCount = note.snoozeCount + 1)
+                                    db.noteDao().updateNote(updatedNote)
+                                    ReminderScheduler.scheduleNoteReminder(context, updatedNote)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
                         }
                     }
                 }
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 

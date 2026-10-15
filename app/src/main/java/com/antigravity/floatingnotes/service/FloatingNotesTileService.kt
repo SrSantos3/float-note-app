@@ -18,33 +18,48 @@ class FloatingNotesTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        val hasOverlayPermission = Settings.canDrawOverlays(this)
-        if (!hasOverlayPermission) {
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        try {
+            val hasOverlayPermission = Settings.canDrawOverlays(this)
+            if (!hasOverlayPermission) {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    val pendingIntent = android.app.PendingIntent.getActivity(
+                        this,
+                        0,
+                        intent,
+                        android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                    )
+                    startActivityAndCollapse(pendingIntent)
+                } else {
+                    @Suppress("DEPRECATION")
+                    startActivityAndCollapse(intent)
+                }
+                return
             }
-            startActivityAndCollapse(intent)
-            return
-        }
 
-        val prefs = getSharedPreferences("floating_notes_prefs", Context.MODE_PRIVATE)
-        val currentlyEnabled = prefs.getBoolean("bubble_overlay_enabled", false)
-        val newEnabled = !currentlyEnabled
+            val prefs = getSharedPreferences("floating_notes_prefs", Context.MODE_PRIVATE)
+            val currentlyEnabled = prefs.getBoolean("bubble_overlay_enabled", false)
+            val newEnabled = !currentlyEnabled
 
-        prefs.edit().putBoolean("bubble_overlay_enabled", newEnabled).apply()
+            prefs.edit().putBoolean("bubble_overlay_enabled", newEnabled).apply()
 
-        val serviceIntent = Intent(this, FloatingBubbleService::class.java)
-        if (newEnabled) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
+            val serviceIntent = Intent(this, FloatingBubbleService::class.java)
+            if (newEnabled) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
+                }
             } else {
-                startService(serviceIntent)
+                stopService(serviceIntent)
             }
-        } else {
-            stopService(serviceIntent)
-        }
 
-        updateTileState()
+            updateTileState()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun updateTileState() {
