@@ -444,12 +444,13 @@ class FloatingBubbleService : Service() {
                 val tvTitle = itemView.findViewById<TextView>(R.id.tv_todo_title)
                 val tvSubtitle = itemView.findViewById<TextView>(R.id.tv_todo_subtitle)
                 val tvCategoryTag = itemView.findViewById<TextView>(R.id.tv_category_tag)
+                val viewIndicator = itemView.findViewById<View>(R.id.view_category_indicator)
                 try {
                     val color = Color.parseColor(note.colorHex)
-                    viewIndicator.setBackgroundColor(color)
+                    viewIndicator?.setBackgroundColor(color)
                     tvCategoryTag.setTextColor(color)
                 } catch (e: Exception) {
-                    viewIndicator.setBackgroundColor(Color.parseColor("#6366F1"))
+                    viewIndicator?.setBackgroundColor(Color.parseColor("#6366F1"))
                 }
                 tvCategoryTag.text = note.category
 

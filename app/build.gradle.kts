@@ -63,11 +63,11 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.androidx.material.icons.extended)
+    implementation("androidx.compose.material:material-icons-extended")
     implementation(libs.androidx.navigation.compose)
 
     // Biometrics / Fingerprint
-    implementation(libs.androidx.biometric)
+    implementation("androidx.biometric:biometric:1.1.0")
 
     // Room Database
     implementation(libs.androidx.room.runtime)
