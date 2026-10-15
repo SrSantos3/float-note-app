@@ -14,7 +14,9 @@ import android.widget.Toast
 import java.util.Locale
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -199,7 +202,7 @@ fun SettingsScreen(
                                 },
                             shape = RoundedCornerShape(14.dp),
                             color = DarkSurfaceElevated,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, CyanAccent.copy(alpha = 0.5f))
+                            border = BorderStroke(1.dp, CyanAccent.copy(alpha = 0.5f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -211,7 +214,7 @@ fun SettingsScreen(
                                 Text(
                                     text = String.format(Locale.getDefault(), "%02d:%02d", quietHoursStartHour, quietHoursStartMinute),
                                     fontSize = 20.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontWeight = FontWeight.Bold,
                                     color = TextPrimary
                                 )
                                 Text("Toca para elegir hora", fontSize = 10.sp, color = CyanAccent)
@@ -233,7 +236,7 @@ fun SettingsScreen(
                                 },
                             shape = RoundedCornerShape(14.dp),
                             color = DarkSurfaceElevated,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f))
+                            border = BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f))
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -245,7 +248,7 @@ fun SettingsScreen(
                                 Text(
                                     text = String.format(Locale.getDefault(), "%02d:%02d", quietHoursEndHour, quietHoursEndMinute),
                                     fontSize = 20.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontWeight = FontWeight.Bold,
                                     color = TextPrimary
                                 )
                                 Text("Toca para elegir hora", fontSize = 10.sp, color = AmberWarning)
@@ -328,7 +331,7 @@ fun SettingsScreen(
                             },
                         shape = RoundedCornerShape(14.dp),
                         color = DarkSurfaceElevated,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.5f))
+                        border = BorderStroke(1.dp, EmeraldSuccess.copy(alpha = 0.5f))
                     ) {
                         Row(
                             modifier = Modifier
@@ -350,7 +353,7 @@ fun SettingsScreen(
                                         text = "Hora de entrega del resumen",
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = TextPrimary,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold
                                     )
                                     Text(
                                         text = "Toca para ajustar la hora a la que te levantas",
@@ -367,7 +370,7 @@ fun SettingsScreen(
                                 Text(
                                     text = String.format(Locale.getDefault(), "⏰ %02d:%02d", dailyBriefingHour, dailyBriefingMinute),
                                     fontSize = 15.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    fontWeight = FontWeight.Bold,
                                     color = EmeraldSuccess,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                                 )
