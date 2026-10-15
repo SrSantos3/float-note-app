@@ -168,7 +168,7 @@ fun EisenhowerQuadrantCard(
             )
 
             Spacer(modifier = Modifier.height(6.dp))
-            Divider(color = DarkBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
+            HorizontalDivider(color = DarkBorder.copy(alpha = 0.6f), thickness = 0.8.dp)
             Spacer(modifier = Modifier.height(6.dp))
 
             if (notes.isEmpty()) {

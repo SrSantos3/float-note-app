@@ -58,7 +58,7 @@ fun NoteItemCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .intrinsicHeight()
+                .height(IntrinsicSize.Min)
         ) {
             // Franja lateral con el color de la categoría (rojo si es alarma urgente)
             Box(
