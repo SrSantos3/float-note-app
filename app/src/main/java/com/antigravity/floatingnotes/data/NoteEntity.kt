@@ -49,8 +49,27 @@ data class NoteEntity(
     val locationName: String? = null,
 
     // UBICACIÓN / WI-FI: Nombre de red Wi-Fi para disparar recordatorio al conectar
-    val wifiSsid: String? = null
+    val wifiSsid: String? = null,
+
+    // TONO DE ALARMA: Tono personalizado para esta nota (URI string y nombre descriptivo)
+    val alarmToneUri: String? = null,
+    val alarmToneName: String? = null,
+
+    // DETECCIÓN INTELIGENTE DE APP: Nombre y paquete de app asociada (ej. WhatsApp, Instagram)
+    val targetAppName: String? = null,
+    val targetAppPackage: String? = null
 ) {
+    fun matchesForegroundApp(packageName: String, appLabel: String): Boolean {
+        return com.antigravity.floatingnotes.ui.util.AppHelper.isNoteMatchingApp(
+            noteTitle = title,
+            noteContent = content,
+            noteAppName = targetAppName,
+            notePackage = targetAppPackage,
+            foregroundPackage = packageName,
+            foregroundLabel = appLabel
+        )
+    }
+
     fun getSubtasks(): List<SubTask> = SubTask.parseJsonList(subtasksJson)
 
     fun withSubtasks(list: List<SubTask>): NoteEntity = copy(subtasksJson = SubTask.toJsonList(list))

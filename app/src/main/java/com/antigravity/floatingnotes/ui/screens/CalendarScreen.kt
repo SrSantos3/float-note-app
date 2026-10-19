@@ -257,7 +257,7 @@ fun CalendarScreen(
                 showAddDialog = false
                 noteToEdit = null
             },
-            onSave = { title, content, targetDate, targetTime, repeatInterval, isPinned, category, colorHex, isUrgentAlarm, snoozeCount, isLocked, subtasksJson, locationName, wifiSsid ->
+            onSave = { title, content, targetDate, targetTime, repeatInterval, isPinned, category, colorHex, isUrgentAlarm, snoozeCount, isLocked, subtasksJson, locationName, wifiSsid, alarmToneUri, alarmToneName, targetAppName, targetAppPackage ->
                 if (noteToEdit != null) {
                     viewModel.updateNote(
                         noteToEdit!!.copy(
@@ -274,7 +274,11 @@ fun CalendarScreen(
                             isLocked = isLocked,
                             subtasksJson = subtasksJson,
                             locationName = locationName,
-                            wifiSsid = wifiSsid
+                            wifiSsid = wifiSsid,
+                            alarmToneUri = alarmToneUri,
+                            alarmToneName = alarmToneName,
+                            targetAppName = targetAppName,
+                            targetAppPackage = targetAppPackage
                         )
                     )
                 } else {
@@ -292,7 +296,11 @@ fun CalendarScreen(
                         isLocked = isLocked,
                         subtasksJson = subtasksJson,
                         locationName = locationName,
-                        wifiSsid = wifiSsid
+                        wifiSsid = wifiSsid,
+                        alarmToneUri = alarmToneUri,
+                        alarmToneName = alarmToneName,
+                        targetAppName = targetAppName,
+                        targetAppPackage = targetAppPackage
                     )
                 }
             }

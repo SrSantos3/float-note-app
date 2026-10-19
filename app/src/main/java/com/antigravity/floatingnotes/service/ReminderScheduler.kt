@@ -18,6 +18,10 @@ object ReminderScheduler {
     const val EXTRA_REPEAT_MINUTES = "extra_repeat_minutes"
     const val EXTRA_IS_URGENT_ALARM = "extra_is_urgent_alarm"
     const val EXTRA_SNOOZE_COUNT = "extra_snooze_count"
+    const val EXTRA_ALARM_TONE_URI = "extra_alarm_tone_uri"
+    const val EXTRA_ALARM_TONE_NAME = "extra_alarm_tone_name"
+    const val EXTRA_TARGET_APP_NAME = "extra_target_app_name"
+    const val EXTRA_TARGET_APP_PACKAGE = "extra_target_app_package"
 
     const val PREFS_NAME = "floating_notes_prefs"
     const val KEY_QUIET_HOURS_ENABLED = "quiet_hours_enabled"
@@ -59,6 +63,10 @@ object ReminderScheduler {
             putExtra(EXTRA_REPEAT_MINUTES, note.repeatIntervalMinutes)
             putExtra(EXTRA_IS_URGENT_ALARM, note.isUrgentAlarm)
             putExtra(EXTRA_SNOOZE_COUNT, note.snoozeCount)
+            putExtra(EXTRA_ALARM_TONE_URI, note.alarmToneUri)
+            putExtra(EXTRA_ALARM_TONE_NAME, note.alarmToneName)
+            putExtra(EXTRA_TARGET_APP_NAME, note.targetAppName)
+            putExtra(EXTRA_TARGET_APP_PACKAGE, note.targetAppPackage)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(

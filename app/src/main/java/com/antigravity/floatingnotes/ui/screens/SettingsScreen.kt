@@ -32,10 +32,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import android.media.RingtoneManager
 import com.antigravity.floatingnotes.data.NoteEntity
 import com.antigravity.floatingnotes.service.AlarmReceiver
+import com.antigravity.floatingnotes.service.AppDetectionAccessibilityService
 import com.antigravity.floatingnotes.service.ReminderScheduler
 import com.antigravity.floatingnotes.ui.theme.*
+import com.antigravity.floatingnotes.ui.util.AlarmToneHelper
 import com.antigravity.floatingnotes.ui.util.BiometricHelper
 import com.antigravity.floatingnotes.ui.viewmodel.NotesViewModel
 import kotlinx.coroutines.launch
@@ -53,6 +56,7 @@ fun SettingsScreen(
         Manifest.permission.RECORD_AUDIO
     ) == PackageManager.PERMISSION_GRANTED
     val hasBiometricHardware = BiometricHelper.canAuthenticate(context)
+    val hasAccessibilityPermission = AppDetectionAccessibilityService.isAccessibilityServiceEnabled(context)
 
     val isQuietHoursEnabled by viewModel.isQuietHoursEnabled.collectAsState()
     val quietHoursStartHour by viewModel.quietHoursStartHour.collectAsState()
@@ -64,6 +68,18 @@ fun SettingsScreen(
     val dailyBriefingHour by viewModel.dailyBriefingHour.collectAsState()
     val dailyBriefingMinute by viewModel.dailyBriefingMinute.collectAsState()
 
+    val initialTone = remember { AlarmToneHelper.getDefaultAlarmTone(context) }
+    var defaultAlarmToneUri by remember { mutableStateOf(initialTone.first) }
+    var defaultAlarmToneName by remember { mutableStateOf(initialTone.second) }
+    var isPlayingDefaultTone by remember { mutableStateOf(false) }
+    var showTonePicker by remember { mutableStateOf(false) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            AlarmToneHelper.stopPreview()
+        }
+    }
+
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
     val canExactAlarm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         alarmManager?.canScheduleExactAlarms() == true
@@ -71,6 +87,25 @@ fun SettingsScreen(
 
     var testScheduledMessage by remember { mutableStateOf<String?>(null) }
     var backupStatusMessage by remember { mutableStateOf<String?>(null) }
+
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val pickedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+            if (pickedUri != null) {
+                val title = AlarmToneHelper.getToneTitle(context, pickedUri.toString())
+                defaultAlarmToneUri = pickedUri.toString()
+                defaultAlarmToneName = title
+                AlarmToneHelper.setDefaultAlarmTone(context, pickedUri.toString(), title)
+            }
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -402,6 +437,99 @@ fun SettingsScreen(
         Spacer(modifier = Modifier.height(20.dp))
 
         // ==========================================
+        // 🔔 TONO DE ALARMA PREDETERMINADO
+        // ==========================================
+        Text(
+            text = "🔔 Tono de Alarma Predeterminado",
+            style = MaterialTheme.typography.titleLarge,
+            color = TextPrimary
+        )
+        Text(
+            text = "Todos los recordatorios de FloatNote suenan como alarmas. Elige qué melodía o tono usar por defecto:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextSecondary
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = DarkSurface
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(SecondaryPink.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = SecondaryPink,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = defaultAlarmToneName,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Tono predeterminado de alarma",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SecondaryPink
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = {
+                            if (isPlayingDefaultTone) {
+                                AlarmToneHelper.stopPreview()
+                                isPlayingDefaultTone = false
+                            } else {
+                                isPlayingDefaultTone = AlarmToneHelper.playPreview(context, defaultAlarmToneUri)
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isPlayingDefaultTone) Icons.Default.Stop else Icons.Default.VolumeUp,
+                            contentDescription = "Probar tono",
+                            tint = if (isPlayingDefaultTone) RoseAlert else SecondaryPink,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Button(
+                    onClick = { showTonePicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = SecondaryPink),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.LibraryMusic, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Cambiar Tono de Alarma", color = Color.White, fontSize = 13.sp)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ==========================================
         // 🔒 SEGURIDAD Y BIOMETRÍA
         // ==========================================
         Text(
@@ -566,7 +694,118 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(12.dp))
         }
 
+        PermissionStatusCard(
+            title = "Detección Inteligente de Apps (Auto-Popup)",
+            description = "Abre automáticamente la lista de tareas al entrar en WhatsApp, Instagram u otras apps vinculadas.",
+            isGranted = hasAccessibilityPermission,
+            actionLabel = if (hasAccessibilityPermission) "Activo" else "Activar Accesibilidad",
+            onActionClick = {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                context.startActivity(intent)
+            }
+        )
+
         Spacer(modifier = Modifier.height(40.dp))
+    }
+
+    if (showTonePicker) {
+        val systemTones = remember { AlarmToneHelper.getSystemTones(context) }
+        AlertDialog(
+            onDismissRequest = {
+                showTonePicker = false
+                AlarmToneHelper.stopPreview()
+                isPlayingDefaultTone = false
+            },
+            title = {
+                Text("Elegir Tono de Alarma Predeterminado", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    systemTones.forEach { tone ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    defaultAlarmToneUri = tone.uriString
+                                    defaultAlarmToneName = tone.name
+                                    AlarmToneHelper.setDefaultAlarmTone(context, tone.uriString, tone.name)
+                                    showTonePicker = false
+                                    AlarmToneHelper.stopPreview()
+                                    isPlayingDefaultTone = false
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (defaultAlarmToneUri == tone.uriString) SecondaryPink.copy(alpha = 0.2f) else DarkSurfaceElevated
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.MusicNote, contentDescription = null, tint = SecondaryPink)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(tone.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                                }
+                                IconButton(
+                                    onClick = {
+                                        AlarmToneHelper.playPreview(context, tone.uriString)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.VolumeUp, contentDescription = "Oír", tint = SecondaryPink, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Button(
+                        onClick = {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM or RingtoneManager.TYPE_RINGTONE)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Elige un tono de alarma")
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                if (defaultAlarmToneUri.isNotBlank()) {
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(defaultAlarmToneUri))
+                                }
+                            }
+                            showTonePicker = false
+                            AlarmToneHelper.stopPreview()
+                            isPlayingDefaultTone = false
+                            try {
+                                ringtonePickerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.LibraryMusic, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Explorar más tonos en el dispositivo", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTonePicker = false
+                    AlarmToneHelper.stopPreview()
+                    isPlayingDefaultTone = false
+                }) {
+                    Text("Cerrar", color = TextSecondary)
+                }
+            },
+            containerColor = DarkSurface
+        )
     }
 }
 

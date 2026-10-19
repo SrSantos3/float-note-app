@@ -3,6 +3,9 @@ package com.antigravity.floatingnotes.ui.components
 import android.app.Activity
 import android.app.DatePickerDialog
 import android.content.Intent
+import android.media.RingtoneManager
+import android.net.Uri
+import android.os.Build
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -30,6 +33,8 @@ import androidx.compose.ui.window.DialogProperties
 import com.antigravity.floatingnotes.data.NoteEntity
 import com.antigravity.floatingnotes.data.SubTask
 import com.antigravity.floatingnotes.ui.theme.*
+import com.antigravity.floatingnotes.ui.util.AlarmToneHelper
+import com.antigravity.floatingnotes.ui.util.AppHelper
 import com.antigravity.floatingnotes.ui.util.NlpTaskParser
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -57,7 +62,11 @@ fun AddEditNoteDialog(
         isLocked: Boolean,
         subtasksJson: String,
         locationName: String?,
-        wifiSsid: String?
+        wifiSsid: String?,
+        alarmToneUri: String?,
+        alarmToneName: String?,
+        targetAppName: String?,
+        targetAppPackage: String?
     ) -> Unit
 ) {
     val context = LocalContext.current
@@ -74,9 +83,36 @@ fun AddEditNoteDialog(
     var locationName by remember { mutableStateOf(initialNote?.locationName ?: "") }
     var wifiSsid by remember { mutableStateOf(initialNote?.wifiSsid ?: "") }
 
+    // Tono de Alarma
+    var alarmToneUri by remember { mutableStateOf(initialNote?.alarmToneUri) }
+    var alarmToneName by remember { mutableStateOf(initialNote?.alarmToneName) }
+    var isPlayingTonePreview by remember { mutableStateOf(false) }
+    var showToneSelectorDialog by remember { mutableStateOf(false) }
+
+    // Aplicación Vinculada (WhatsApp, Instagram, etc.)
+    var targetAppName by remember { mutableStateOf(initialNote?.targetAppName ?: "") }
+    var targetAppPackage by remember { mutableStateOf(initialNote?.targetAppPackage ?: "") }
+
     // Subtareas
     var subtasks by remember { mutableStateOf(initialNote?.getSubtasks() ?: emptyList()) }
     var newSubtaskText by remember { mutableStateOf("") }
+
+    val ringtonePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val pickedUri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                result.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+            if (pickedUri != null) {
+                alarmToneUri = pickedUri.toString()
+                alarmToneName = AlarmToneHelper.getToneTitle(context, pickedUri.toString())
+            }
+        }
+    }
 
     val speechLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -223,6 +259,10 @@ fun AddEditNoteDialog(
                                     if (nlpParsed.repeatIntervalMinutes > 0) repeatInterval = nlpParsed.repeatIntervalMinutes
                                     if (nlpParsed.isUrgent) isUrgentAlarm = true
                                     nlpParsed.detectedCategory?.let { category = it }
+                                    nlpParsed.detectedAppName?.let {
+                                        targetAppName = it
+                                        targetAppPackage = nlpParsed.detectedAppPackage ?: ""
+                                    }
                                     title = nlpParsed.cleanTitle
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
@@ -761,6 +801,201 @@ fun AddEditNoteDialog(
                     modifier = Modifier.padding(top = 4.dp, start = 4.dp)
                 )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ==========================================
+                // 📱 APLICACIÓN VINCULADA (AUTO-POPUP INTELIGENTE)
+                // ==========================================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Apps,
+                        contentDescription = null,
+                        tint = EmeraldSuccess,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "📱 Aplicación Vinculada (Auto-Popup):",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("WhatsApp", "Instagram", "YouTube", "TikTok").forEach { appName ->
+                        FilterChip(
+                            selected = targetAppName.equals(appName, ignoreCase = true),
+                            onClick = {
+                                if (targetAppName.equals(appName, ignoreCase = true)) {
+                                    targetAppName = ""
+                                    targetAppPackage = ""
+                                } else {
+                                    targetAppName = appName
+                                    targetAppPackage = AppHelper.POPULAR_APPS.firstOrNull { it.name.equals(appName, ignoreCase = true) }?.packageName ?: ""
+                                }
+                            },
+                            label = { Text(appName, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldSuccess,
+                                selectedLabelColor = DarkBackground
+                            )
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf("Telegram", "Gmail", "X (Twitter)", "Spotify").forEach { appName ->
+                        FilterChip(
+                            selected = targetAppName.equals(appName, ignoreCase = true),
+                            onClick = {
+                                if (targetAppName.equals(appName, ignoreCase = true)) {
+                                    targetAppName = ""
+                                    targetAppPackage = ""
+                                } else {
+                                    targetAppName = appName
+                                    targetAppPackage = AppHelper.POPULAR_APPS.firstOrNull { it.name.equals(appName, ignoreCase = true) }?.packageName ?: ""
+                                }
+                            },
+                            label = { Text(appName, fontSize = 11.sp) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = EmeraldSuccess,
+                                selectedLabelColor = DarkBackground
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = targetAppName,
+                    onValueChange = { input ->
+                        targetAppName = input
+                        val detected = AppHelper.detectAppFromText(input)
+                        if (detected != null) {
+                            targetAppPackage = detected.packageName
+                        }
+                    },
+                    label = { Text("Nombre de la aplicación (ej. WhatsApp, Instagram...)", fontSize = 11.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = EmeraldSuccess,
+                        unfocusedBorderColor = DarkBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
+                )
+                Text(
+                    text = "💡 Al abrir esta app en tu móvil, el popup flotante se abrirá solo y mostrará únicamente esta tarea.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // ==========================================
+                // 🔔 TONO DE ALARMA PARA ESTA TAREA
+                // ==========================================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = SecondaryPink,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "🔔 Tono de Alarma para esta Tarea:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextPrimary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showToneSelectorDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    color = DarkSurfaceElevated,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, SecondaryPink.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            val displayTone = if (!alarmToneName.isNullOrBlank()) {
+                                alarmToneName!!
+                            } else {
+                                "Predeterminado (${AlarmToneHelper.getDefaultAlarmTone(context).second})"
+                            }
+                            Text(
+                                text = displayTone,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextPrimary
+                            )
+                            Text(
+                                text = "Toca para elegir el tono de alarma",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SecondaryPink
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    if (isPlayingTonePreview) {
+                                        AlarmToneHelper.stopPreview()
+                                        isPlayingTonePreview = false
+                                    } else {
+                                        val targetUri = alarmToneUri ?: AlarmToneHelper.getDefaultAlarmTone(context).first
+                                        isPlayingTonePreview = AlarmToneHelper.playPreview(context, targetUri)
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlayingTonePreview) Icons.Default.Stop else Icons.Default.VolumeUp,
+                                    contentDescription = "Probar tono",
+                                    tint = if (isPlayingTonePreview) RoseAlert else SecondaryPink
+                                )
+                            }
+                            if (alarmToneUri != null) {
+                                IconButton(onClick = {
+                                    alarmToneUri = null
+                                    alarmToneName = null
+                                    AlarmToneHelper.stopPreview()
+                                    isPlayingTonePreview = false
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Restablecer",
+                                        tint = TextSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 // Switch: Mostrar en burbuja flotante
@@ -799,13 +1034,17 @@ fun AddEditNoteDialog(
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(onClick = onDismiss) {
+                    TextButton(onClick = {
+                        AlarmToneHelper.stopPreview()
+                        onDismiss()
+                    }) {
                         Text("Cancelar", color = TextSecondary)
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             if (title.isNotBlank()) {
+                                AlarmToneHelper.stopPreview()
                                 onSave(
                                     title.trim(),
                                     content.trim(),
@@ -820,7 +1059,11 @@ fun AddEditNoteDialog(
                                     isLocked,
                                     SubTask.toJsonList(subtasks),
                                     locationName.trim().ifBlank { null },
-                                    wifiSsid.trim().ifBlank { null }
+                                    wifiSsid.trim().ifBlank { null },
+                                    alarmToneUri?.ifBlank { null },
+                                    alarmToneName?.ifBlank { null },
+                                    targetAppName.trim().ifBlank { null },
+                                    targetAppPackage.trim().ifBlank { null }
                                 )
                                 onDismiss()
                             }
@@ -836,5 +1079,131 @@ fun AddEditNoteDialog(
                 }
             }
         }
+    }
+
+    // Diálogo de Selección de Tono de Alarma
+    if (showToneSelectorDialog) {
+        val systemTones = remember { AlarmToneHelper.getSystemTones(context) }
+        AlertDialog(
+            onDismissRequest = {
+                showToneSelectorDialog = false
+                AlarmToneHelper.stopPreview()
+                isPlayingTonePreview = false
+            },
+            title = {
+                Text(
+                    text = "Seleccionar Tono de Alarma",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = TextPrimary
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // Opción: Predeterminado de la app
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                alarmToneUri = null
+                                alarmToneName = null
+                                showToneSelectorDialog = false
+                                AlarmToneHelper.stopPreview()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (alarmToneUri == null) PrimaryIndigo.copy(alpha = 0.2f) else DarkSurfaceElevated
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Default.Alarm, contentDescription = null, tint = PrimaryIndigo)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Usar Predeterminado de la App", color = TextPrimary, fontSize = 13.sp)
+                        }
+                    }
+
+                    // Lista de tonos detectados en el sistema
+                    systemTones.forEach { tone ->
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    alarmToneUri = tone.uriString
+                                    alarmToneName = tone.name
+                                    showToneSelectorDialog = false
+                                    AlarmToneHelper.stopPreview()
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = if (alarmToneUri == tone.uriString) SecondaryPink.copy(alpha = 0.2f) else DarkSurfaceElevated
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = Icons.Default.MusicNote, contentDescription = null, tint = SecondaryPink)
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(tone.name, color = TextPrimary, fontSize = 13.sp, maxLines = 1)
+                                }
+                                IconButton(
+                                    onClick = {
+                                        AlarmToneHelper.playPreview(context, tone.uriString)
+                                    },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.VolumeUp, contentDescription = "Oír", tint = SecondaryPink, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Abrir selector nativo del sistema
+                    Button(
+                        onClick = {
+                            val intent = Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM or RingtoneManager.TYPE_RINGTONE)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "Elige un tono de alarma")
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                if (alarmToneUri != null) {
+                                    putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, Uri.parse(alarmToneUri))
+                                }
+                            }
+                            showToneSelectorDialog = false
+                            AlarmToneHelper.stopPreview()
+                            try {
+                                ringtonePickerLauncher.launch(intent)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.LibraryMusic, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Explorar más tonos en el dispositivo", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showToneSelectorDialog = false
+                    AlarmToneHelper.stopPreview()
+                }) {
+                    Text("Cerrar", color = TextSecondary)
+                }
+            },
+            containerColor = DarkSurface
+        )
     }
 }

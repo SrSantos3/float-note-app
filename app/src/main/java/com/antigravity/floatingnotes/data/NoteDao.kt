@@ -9,6 +9,9 @@ interface NoteDao {
     @Query("SELECT * FROM notes WHERE isCompleted = 0 ORDER BY priority DESC, isUrgentAlarm DESC, createdAt DESC")
     fun getActiveNotes(): Flow<List<NoteEntity>>
 
+    @Query("SELECT * FROM notes WHERE isCompleted = 0 ORDER BY priority DESC, isUrgentAlarm DESC, createdAt DESC")
+    suspend fun getActiveNotesSync(): List<NoteEntity>
+
     @Query("SELECT * FROM notes WHERE isCompleted = 1 ORDER BY createdAt DESC")
     fun getCompletedNotes(): Flow<List<NoteEntity>>
 

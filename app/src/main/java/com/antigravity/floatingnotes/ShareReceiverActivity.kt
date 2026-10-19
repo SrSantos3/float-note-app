@@ -83,7 +83,9 @@ class ShareReceiverActivity : AppCompatActivity() {
                 repeatIntervalMinutes = parsed.repeatIntervalMinutes,
                 isUrgentAlarm = parsed.isUrgent,
                 category = category,
-                colorHex = if (parsed.isUrgent) "#EF4444" else "#6366F1"
+                colorHex = if (parsed.isUrgent) "#EF4444" else "#6366F1",
+                targetAppName = parsed.detectedAppName,
+                targetAppPackage = parsed.detectedAppPackage
             )
             val generatedId = db.noteDao().insertNote(note)
             val savedNote = note.copy(id = generatedId)

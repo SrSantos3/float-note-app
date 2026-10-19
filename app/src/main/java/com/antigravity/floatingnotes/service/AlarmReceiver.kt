@@ -7,15 +7,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
-import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.antigravity.floatingnotes.MainActivity
 import com.antigravity.floatingnotes.R
 import com.antigravity.floatingnotes.data.AppDatabase
+import com.antigravity.floatingnotes.ui.util.AlarmToneHelper
 import com.antigravity.floatingnotes.ui.viewmodel.NotesViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -28,6 +30,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val ACTION_COMPLETE = "com.antigravity.floatingnotes.ACTION_COMPLETE_NOTE"
         const val ACTION_SNOOZE_15 = "com.antigravity.floatingnotes.ACTION_SNOOZE_15"
         const val ACTION_SNOOZE_SMART = "com.antigravity.floatingnotes.ACTION_SNOOZE_SMART"
+        const val ACTION_DISMISS_ALARM = "com.antigravity.floatingnotes.ACTION_DISMISS_ALARM"
         const val ACTION_DAILY_BRIEFING = "com.antigravity.floatingnotes.ACTION_DAILY_BRIEFING"
     }
 
@@ -45,8 +48,13 @@ class AlarmReceiver : BroadcastReceiver() {
             if (noteId == -1L) return
 
             when (intent.action) {
+                ACTION_DISMISS_ALARM -> {
+                    notificationManager.cancel(noteId.toInt())
+                    AlarmToneHelper.stopPreview()
+                }
                 ACTION_COMPLETE -> {
                     notificationManager.cancel(noteId.toInt())
+                    AlarmToneHelper.stopPreview()
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             val db = AppDatabase.getDatabase(context)
@@ -59,6 +67,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 ACTION_SNOOZE_15 -> {
                     notificationManager.cancel(noteId.toInt())
+                    AlarmToneHelper.stopPreview()
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             val db = AppDatabase.getDatabase(context)
@@ -79,6 +88,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 ACTION_SNOOZE_SMART -> {
                     notificationManager.cancel(noteId.toInt())
+                    AlarmToneHelper.stopPreview()
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
                             val db = AppDatabase.getDatabase(context)
@@ -105,11 +115,11 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 else -> {
                     // Disparo de la alarma programada o periódica
-                    val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Recordatorio de Nota"
+                    val title = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_TITLE) ?: "Alarma de Nota"
                     val content = intent.getStringExtra(ReminderScheduler.EXTRA_NOTE_CONTENT) ?: ""
                     val repeatMinutes = intent.getIntExtra(ReminderScheduler.EXTRA_REPEAT_MINUTES, 0)
                     val isUrgent = intent.getBooleanExtra(ReminderScheduler.EXTRA_IS_URGENT_ALARM, false)
-                    val snoozeCount = intent.getIntExtra(ReminderScheduler.EXTRA_SNOOZE_COUNT, 0)
+                    val toneUriExtra = intent.getStringExtra(ReminderScheduler.EXTRA_ALARM_TONE_URI)
 
                     // 🌙 VERIFICAR HORAS DE SILENCIO (MODO SUEÑO)
                     if (ReminderScheduler.isQuietHours(context)) {
@@ -135,15 +145,20 @@ class AlarmReceiver : BroadcastReceiver() {
                             val db = AppDatabase.getDatabase(context)
                             val note = db.noteDao().getNoteById(noteId)
                             if (note != null && !note.isCompleted) {
-                                showNotification(
-                                    context,
-                                    notificationManager,
-                                    noteId,
-                                    title,
-                                    content,
-                                    repeatMinutes,
-                                    isUrgent,
-                                    note.snoozeCount
+                                val chosenToneUri = note.alarmToneUri?.ifBlank { null }
+                                    ?: toneUriExtra?.ifBlank { null }
+                                    ?: AlarmToneHelper.getDefaultAlarmTone(context).first
+
+                                showAlarmNotification(
+                                    context = context,
+                                    notificationManager = notificationManager,
+                                    noteId = noteId,
+                                    title = title,
+                                    content = content,
+                                    repeatMinutes = repeatMinutes,
+                                    isUrgent = isUrgent,
+                                    snoozeCount = note.snoozeCount,
+                                    alarmToneUri = chosenToneUri
                                 )
 
                                 if (repeatMinutes > 0) {
@@ -164,7 +179,17 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     private fun handleDailyBriefing(context: Context, manager: NotificationManager) {
-        createNotificationChannels(context, manager)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val briefingChannel = NotificationChannel(
+                CHANNEL_BRIEFING_ID,
+                "Resumen Matutino Diario",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notificación diaria con el resumen de tareas al comenzar el día."
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(briefingChannel)
+        }
 
         CoroutineScope(Dispatchers.IO).launch {
             val db = AppDatabase.getDatabase(context)
@@ -208,7 +233,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(
+    private fun showAlarmNotification(
         context: Context,
         notificationManager: NotificationManager,
         noteId: Long,
@@ -216,11 +241,32 @@ class AlarmReceiver : BroadcastReceiver() {
         content: String,
         repeatMinutes: Int,
         isUrgent: Boolean,
-        snoozeCount: Int
+        snoozeCount: Int,
+        alarmToneUri: String
     ) {
-        createNotificationChannels(context, notificationManager)
+        val soundUri = if (alarmToneUri.isNotBlank()) Uri.parse(alarmToneUri) else null
+        val channelId = "channel_floating_alarm_${alarmToneUri.hashCode()}"
 
-        val channelId = if (isUrgent) CHANNEL_URGENT_ID else CHANNEL_ID
+        // Crear o actualizar canal de notificación como ALARMA
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                "Alarmas de FloatNote",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alarmas de recordatorio con tono personalizado."
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 600, 300, 600, 300, 1000)
+                if (soundUri != null) {
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .build()
+                    setSound(soundUri, audioAttributes)
+                }
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -254,16 +300,14 @@ class AlarmReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val smartSnoozeLabel = if (currentHour < 17) "Esta tarde (18h)" else "Mañana (9h)"
-        val smartSnoozeIntent = Intent(context, AlarmReceiver::class.java).apply {
-            action = ACTION_SNOOZE_SMART
+        val dismissIntent = Intent(context, AlarmReceiver::class.java).apply {
+            action = ACTION_DISMISS_ALARM
             putExtra(ReminderScheduler.EXTRA_NOTE_ID, noteId)
         }
-        val smartSnoozePendingIntent = PendingIntent.getBroadcast(
+        val dismissPendingIntent = PendingIntent.getBroadcast(
             context,
-            (noteId * 10 + 3).toInt(),
-            smartSnoozeIntent,
+            (noteId * 10 + 4).toInt(),
+            dismissIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -275,7 +319,7 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         val repeatInfo = if (repeatMinutes > 0) " (Repite cada $repeatMinutes min)" else ""
-        val urgencyPrefix = if (isUrgent) "🚨 [ALARMA URGENTE] " else ""
+        val urgencyPrefix = if (isUrgent) "🚨 [ALARMA URGENTE] " else "⏰ [ALARMA] "
         val fullContent = if (content.isNotBlank()) "$content$repeatInfo$antiProcrastinationMsg" else "Tarea pendiente$repeatInfo$antiProcrastinationMsg"
 
         val notificationBuilder = NotificationCompat.Builder(context, channelId)
@@ -283,65 +327,29 @@ class AlarmReceiver : BroadcastReceiver() {
             .setContentTitle("$urgencyPrefix$title")
             .setContentText(fullContent)
             .setStyle(NotificationCompat.BigTextStyle().bigText(fullContent))
-            .setPriority(if (isUrgent) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
-            .setCategory(if (isUrgent) NotificationCompat.CATEGORY_ALARM else NotificationCompat.CATEGORY_REMINDER)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setContentIntent(openAppPendingIntent)
-            .setAutoCancel(true)
+            .setOngoing(true)
+            .setAutoCancel(false)
             .addAction(R.drawable.ic_check, "Completar", completePendingIntent)
             .addAction(R.drawable.ic_close, "+15 min", snooze15PendingIntent)
-            .addAction(R.drawable.ic_calendar, smartSnoozeLabel, smartSnoozePendingIntent)
+            .addAction(R.drawable.ic_close, "Silenciar", dismissPendingIntent)
 
-        if (isUrgent) {
-            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            notificationBuilder
-                .setSound(alarmSound)
-                .setVibrate(longArrayOf(0, 500, 200, 500, 200, 1000))
+        if (soundUri != null) {
+            notificationBuilder.setSound(soundUri)
         }
+        notificationBuilder.setVibrate(longArrayOf(0, 600, 300, 600, 300, 1000))
 
         notificationManager.notify(noteId.toInt(), notificationBuilder.build())
-    }
 
-    private fun createNotificationChannels(context: Context, manager: NotificationManager) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val standardChannel = NotificationChannel(
-                CHANNEL_ID,
-                context.getString(R.string.channel_reminders_name),
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = context.getString(R.string.channel_reminders_desc)
-                enableVibration(true)
-            }
+        // Hacer sonar el tono de alarma insistente
+        AlarmToneHelper.playPreview(context, alarmToneUri)
 
-            val urgentChannel = NotificationChannel(
-                CHANNEL_URGENT_ID,
-                "Alarmas Urgentes (Anti-Procrastinación)",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Alarmas críticas que suenan insistentemente para tareas que no puedes posponer."
-                val audioAttributes = AudioAttributes.Builder()
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .setUsage(AudioAttributes.USAGE_ALARM)
-                    .build()
-                val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-                    ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-                setSound(alarmSound, audioAttributes)
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 1000)
-            }
-
-            val briefingChannel = NotificationChannel(
-                CHANNEL_BRIEFING_ID,
-                "Resumen Matutino Diario",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notificación diaria con el resumen de tareas al comenzar el día."
-                enableVibration(true)
-            }
-
-            manager.createNotificationChannel(standardChannel)
-            manager.createNotificationChannel(urgentChannel)
-            manager.createNotificationChannel(briefingChannel)
+        // Detener el sonido automáticamente tras 45 segundos si nadie responde
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(45000L)
+            AlarmToneHelper.stopPreview()
         }
     }
 }

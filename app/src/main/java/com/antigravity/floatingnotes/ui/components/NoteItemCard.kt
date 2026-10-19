@@ -354,6 +354,36 @@ fun NoteItemCard(
                         }
                     }
 
+                    // Badge de App Vinculada (WhatsApp, Instagram, etc.)
+                    if (!note.targetAppName.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = EmeraldSuccess.copy(alpha = 0.18f)
+                        ) {
+                            Text(
+                                text = "📱 ${note.targetAppName}",
+                                fontSize = 11.sp,
+                                color = EmeraldSuccess,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
+                    // Badge de Tono de Alarma Personalizado
+                    if (!note.alarmToneName.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = SecondaryPink.copy(alpha = 0.18f)
+                        ) {
+                            Text(
+                                text = "🔔 ${note.alarmToneName}",
+                                fontSize = 11.sp,
+                                color = SecondaryPink,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+
                     // Badge de Ubicación / Wi-Fi
                     if (!note.locationName.isNullOrBlank() || !note.wifiSsid.isNullOrBlank()) {
                         val locLabel = listOfNotNull(note.locationName, note.wifiSsid?.let { "📶 $it" }).joinToString(" • ")

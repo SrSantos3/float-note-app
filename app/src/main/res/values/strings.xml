@@ -11,4 +11,6 @@
     <string name="action_complete">Marcar Hecha</string>
     <string name="action_snooze">Posponer 15 min</string>
     <string name="notification_pending_task">Tarea pendiente</string>
+    <string name="accessibility_service_name">Detector Inteligente de Apps para FloatNote</string>
+    <string name="accessibility_service_description">Permite a FloatNote detectar cuándo abres WhatsApp, Instagram u otras apps para desplegar automáticamente tus recordatorios y tareas asociadas a esa app.</string>
 </resources>

@@ -26,6 +26,7 @@ import com.antigravity.floatingnotes.MainActivity
 import com.antigravity.floatingnotes.R
 import com.antigravity.floatingnotes.data.AppDatabase
 import com.antigravity.floatingnotes.data.NoteEntity
+import com.antigravity.floatingnotes.ui.util.AppHelper
 import com.antigravity.floatingnotes.ui.util.NlpTaskParser
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collectLatest
@@ -60,14 +61,58 @@ class FloatingBubbleService : Service() {
     private var etQuickNote: EditText? = null
     private var btnSpeechToText: ImageButton? = null
 
+    // Banner Inteligente de App
+    private var layoutAppFilterBanner: View? = null
+    private var tvAppFilterEmoji: TextView? = null
+    private var tvAppFilterTitle: TextView? = null
+    private var btnClearAppFilter: View? = null
+
     // Reconocimiento de voz en la burbuja
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
+
+    // Estado del Filtro Inteligente de App
+    data class CurrentAppFilter(
+        val packageName: String,
+        val appLabel: String,
+        val emoji: String
+    )
+    private var activeAppFilter: CurrentAppFilter? = null
+    private var cachedAllNotes: List<NoteEntity> = emptyList()
 
     companion object {
         const val CHANNEL_ID = "channel_floating_bubble_service"
         const val NOTIFICATION_ID = 9001
         const val ACTION_STOP_SERVICE = "com.antigravity.floatingnotes.ACTION_STOP_BUBBLE"
+        const val ACTION_APP_OPENED = "com.antigravity.floatingnotes.ACTION_APP_OPENED"
+        const val ACTION_APP_EXITED = "com.antigravity.floatingnotes.ACTION_APP_EXITED"
+        const val EXTRA_PACKAGE_NAME = "extra_package_name"
+        const val EXTRA_APP_LABEL = "extra_app_label"
+
+        fun handleForegroundAppChanged(context: Context, packageName: String, appLabel: String) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_APP_OPENED
+                putExtra(EXTRA_PACKAGE_NAME, packageName)
+                putExtra(EXTRA_APP_LABEL, appLabel)
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
+        fun handleForegroundAppExited(context: Context, packageName: String) {
+            val intent = Intent(context, FloatingBubbleService::class.java).apply {
+                action = ACTION_APP_EXITED
+                putExtra(EXTRA_PACKAGE_NAME, packageName)
+            }
+            try {
+                context.startService(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -266,6 +311,18 @@ class FloatingBubbleService : Service() {
         etQuickNote = popupView?.findViewById(R.id.et_quick_note)
         btnSpeechToText = popupView?.findViewById(R.id.btn_speech_to_text)
 
+        // Banner de App
+        layoutAppFilterBanner = popupView?.findViewById(R.id.layout_app_filter_banner)
+        tvAppFilterEmoji = popupView?.findViewById(R.id.tv_app_filter_emoji)
+        tvAppFilterTitle = popupView?.findViewById(R.id.tv_app_filter_title)
+        btnClearAppFilter = popupView?.findViewById(R.id.btn_clear_app_filter)
+
+        btnClearAppFilter?.setOnClickListener {
+            activeAppFilter = null
+            layoutAppFilterBanner?.visibility = View.GONE
+            updateOverlayUI(cachedAllNotes)
+        }
+
         popupView?.findViewById<ImageButton>(R.id.btn_popup_close)?.setOnClickListener {
             hidePopup()
         }
@@ -390,7 +447,9 @@ class FloatingBubbleService : Service() {
                     priority = if (parsed.isUrgent) 3 else 2,
                     category = parsed.detectedCategory ?: "General",
                     colorHex = if (parsed.isUrgent) "#EC4899" else "#6366F1",
-                    isUrgentAlarm = parsed.isUrgent
+                    isUrgentAlarm = parsed.isUrgent,
+                    targetAppName = parsed.detectedAppName ?: activeAppFilter?.appLabel,
+                    targetAppPackage = parsed.detectedAppPackage ?: activeAppFilter?.packageName
                 )
                 val insertedId = db.noteDao().insertNote(newNote)
                 if (newNote.repeatIntervalMinutes > 0 || newNote.targetTime != null || newNote.targetDate != null || newNote.isUrgentAlarm) {
@@ -439,14 +498,64 @@ class FloatingBubbleService : Service() {
         serviceScope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
             db.noteDao().getOverlayPendingNotes().collectLatest { notes ->
+                cachedAllNotes = notes
                 updateOverlayUI(notes)
             }
         }
     }
 
+    private fun onAppOpened(packageName: String, appLabel: String) {
+        serviceScope.launch {
+            val db = AppDatabase.getDatabase(applicationContext)
+            val allPending = withContext(Dispatchers.IO) {
+                db.noteDao().getActiveNotesSync()
+            }
+
+            val matchingNotes = allPending.filter { it.matchesForegroundApp(packageName, appLabel) }
+            if (matchingNotes.isNotEmpty()) {
+                val (_, emoji) = AppHelper.getAppInfoForPackage(applicationContext, packageName)
+                activeAppFilter = CurrentAppFilter(packageName, appLabel, emoji)
+                // Se abre solo automáticamente y muestra sólo las tareas de esta app
+                showPopup()
+                updateOverlayUI(cachedAllNotes)
+            }
+        }
+    }
+
+    private fun onAppExited(packageName: String) {
+        if (activeAppFilter?.packageName.equals(packageName, ignoreCase = true)) {
+            // El usuario salió de la app asociada: cerrar el popup y limpiar el filtro
+            activeAppFilter = null
+            hidePopup()
+            updateOverlayUI(cachedAllNotes)
+        }
+    }
+
     @SuppressLint("SetTextI18n")
     private fun updateOverlayUI(notes: List<NoteEntity>) {
-        val count = notes.size
+        val currentFilter = activeAppFilter
+
+        // Filtrar tareas según la aplicación actualmente en primer plano (si aplica)
+        val displayNotes = if (currentFilter != null) {
+            val filtered = notes.filter { it.matchesForegroundApp(currentFilter.packageName, currentFilter.appLabel) }
+            if (filtered.isEmpty()) {
+                // Se cumplieron todas las tareas de la app: desbloquear el filtro y celebrar
+                activeAppFilter = null
+                layoutAppFilterBanner?.visibility = View.GONE
+                Toast.makeText(applicationContext, "¡Todas las tareas de ${currentFilter.appLabel} cumplidas! 🎉", Toast.LENGTH_SHORT).show()
+                notes
+            } else {
+                layoutAppFilterBanner?.visibility = View.VISIBLE
+                tvAppFilterEmoji?.text = currentFilter.emoji
+                tvAppFilterTitle?.text = "Modo ${currentFilter.appLabel} (${filtered.size})"
+                filtered
+            }
+        } else {
+            layoutAppFilterBanner?.visibility = View.GONE
+            notes
+        }
+
+        val count = displayNotes.size
 
         if (count > 0) {
             tvPendingBadge?.visibility = View.VISIBLE
@@ -458,13 +567,18 @@ class FloatingBubbleService : Service() {
         tvPopupCount?.text = count.toString()
         containerTodoItems?.removeAllViews()
 
-        if (notes.isEmpty()) {
+        if (displayNotes.isEmpty()) {
             tvEmptyState?.visibility = View.VISIBLE
+            tvEmptyState?.text = if (currentFilter != null) {
+                "✨ No hay tareas pendientes para ${currentFilter.appLabel}"
+            } else {
+                "✨ No tienes tareas pendientes"
+            }
         } else {
             tvEmptyState?.visibility = View.GONE
             val inflater = LayoutInflater.from(this)
 
-            for (note in notes) {
+            for (note in displayNotes) {
                 val itemView = inflater.inflate(R.layout.item_overlay_todo, containerTodoItems, false)
                 val cb = itemView.findViewById<CheckBox>(R.id.cb_todo_complete)
                 val tvTitle = itemView.findViewById<TextView>(R.id.tv_todo_title)
@@ -495,6 +609,9 @@ class FloatingBubbleService : Service() {
                     if (total > 0) {
                         tvSubtitle.visibility = View.VISIBLE
                         tvSubtitle.text = "📋 $done/$total subtareas" + if (note.repeatIntervalMinutes > 0) " • ⏱ ${note.repeatIntervalMinutes}m" else ""
+                    } else if (!note.targetAppName.isNullOrBlank()) {
+                        tvSubtitle.visibility = View.VISIBLE
+                        tvSubtitle.text = "📱 Vinculada a ${note.targetAppName}"
                     } else if (note.repeatIntervalMinutes > 0) {
                         tvSubtitle.visibility = View.VISIBLE
                         tvSubtitle.text = "⏱ Avisa cada ${note.repeatIntervalMinutes} min"
@@ -522,9 +639,24 @@ class FloatingBubbleService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP_SERVICE) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP_SERVICE -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_APP_OPENED -> {
+                val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                val label = intent.getStringExtra(EXTRA_APP_LABEL) ?: pkg
+                if (!pkg.isNullOrBlank()) {
+                    onAppOpened(pkg, label ?: pkg)
+                }
+            }
+            ACTION_APP_EXITED -> {
+                val pkg = intent.getStringExtra(EXTRA_PACKAGE_NAME)
+                if (!pkg.isNullOrBlank()) {
+                    onAppExited(pkg)
+                }
+            }
         }
         return START_STICKY
     }

@@ -11,7 +11,9 @@ data class ParsedTaskInfo(
     val repeatIntervalMinutes: Int = 0,
     val isUrgent: Boolean = false,
     val detectedCategory: String? = null,
-    val summaryPreview: String? = null
+    val summaryPreview: String? = null,
+    val detectedAppName: String? = null,
+    val detectedAppPackage: String? = null
 )
 
 object NlpTaskParser {
@@ -36,6 +38,16 @@ object NlpTaskParser {
             isUrgent = true
             detectedTags.add("🚨 Urgente")
             cleanTitle = cleanTitle.replace(Regex("(?i)\\b(urgente|prioritario|importante|asap)\\b"), "").trim()
+        }
+
+        // 1.1 Detectar Aplicación Vinculada (WhatsApp, Instagram, etc.)
+        val detectedApp = AppHelper.detectAppFromText(rawText)
+        var appName: String? = null
+        var appPackage: String? = null
+        if (detectedApp != null) {
+            appName = detectedApp.name
+            appPackage = detectedApp.packageName
+            detectedTags.add("${detectedApp.emoji} ${detectedApp.name}")
         }
 
         // 2. Detectar Categorías por palabras clave
@@ -168,7 +180,9 @@ object NlpTaskParser {
             repeatIntervalMinutes = repeatMinutes,
             isUrgent = isUrgent,
             detectedCategory = category,
-            summaryPreview = summary
+            summaryPreview = summary,
+            detectedAppName = appName,
+            detectedAppPackage = appPackage
         )
     }
 }

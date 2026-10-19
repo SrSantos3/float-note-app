@@ -213,7 +213,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         isLocked: Boolean = false,
         subtasksJson: String = "[]",
         locationName: String? = null,
-        wifiSsid: String? = null
+        wifiSsid: String? = null,
+        alarmToneUri: String? = null,
+        alarmToneName: String? = null,
+        targetAppName: String? = null,
+        targetAppPackage: String? = null
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val normalizedDate = targetDate?.let { getStartOfDay(it) }
@@ -232,7 +236,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 isLocked = isLocked,
                 subtasksJson = subtasksJson,
                 locationName = locationName?.ifBlank { null },
-                wifiSsid = wifiSsid?.ifBlank { null }
+                wifiSsid = wifiSsid?.ifBlank { null },
+                alarmToneUri = alarmToneUri?.ifBlank { null },
+                alarmToneName = alarmToneName?.ifBlank { null },
+                targetAppName = targetAppName?.ifBlank { null },
+                targetAppPackage = targetAppPackage?.ifBlank { null }
             )
             val generatedId = noteDao.insertNote(note)
             val savedNote = note.copy(id = generatedId)
@@ -316,13 +324,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     put("subtasksJson", note.subtasksJson)
                     put("locationName", note.locationName ?: JSONObject.NULL)
                     put("wifiSsid", note.wifiSsid ?: JSONObject.NULL)
+                    put("alarmToneUri", note.alarmToneUri ?: JSONObject.NULL)
+                    put("alarmToneName", note.alarmToneName ?: JSONObject.NULL)
+                    put("targetAppName", note.targetAppName ?: JSONObject.NULL)
+                    put("targetAppPackage", note.targetAppPackage ?: JSONObject.NULL)
                 }
                 jsonArray.put(obj)
             }
 
             val rootJson = JSONObject().apply {
                 put("app", "FloatNote")
-                put("version", 5)
+                put("version", 6)
                 put("exportedAt", System.currentTimeMillis())
                 put("notes", jsonArray)
             }
@@ -379,7 +391,11 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                     isLocked = obj.optBoolean("isLocked", false),
                     subtasksJson = obj.optString("subtasksJson", "[]"),
                     locationName = if (obj.isNull("locationName")) null else obj.optString("locationName"),
-                    wifiSsid = if (obj.isNull("wifiSsid")) null else obj.optString("wifiSsid")
+                    wifiSsid = if (obj.isNull("wifiSsid")) null else obj.optString("wifiSsid"),
+                    alarmToneUri = if (obj.isNull("alarmToneUri")) null else obj.optString("alarmToneUri"),
+                    alarmToneName = if (obj.isNull("alarmToneName")) null else obj.optString("alarmToneName"),
+                    targetAppName = if (obj.isNull("targetAppName")) null else obj.optString("targetAppName"),
+                    targetAppPackage = if (obj.isNull("targetAppPackage")) null else obj.optString("targetAppPackage")
                 )
                 importedNotes.add(note)
             }
