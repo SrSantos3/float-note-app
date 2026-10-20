@@ -698,10 +698,10 @@ fun SettingsScreen(
         }
 
         PermissionStatusCard(
-            title = "Detección Inteligente de Apps (Auto-Popup)",
-            description = "Abre automáticamente la lista de tareas al entrar en WhatsApp, Instagram u otras apps vinculadas.",
+            title = "Detección Inteligente de Apps (Opcional)",
+            description = "Abre automáticamente la lista de tareas al entrar en WhatsApp, Instagram u otras apps vinculadas. Si tu teléfono tiene ajustes restringidos o prefieres no activarlo, la burbuja y los filtros funcionan al 100% manualmente sin este permiso.",
             isGranted = hasAccessibilityPermission,
-            actionLabel = if (hasAccessibilityPermission) "Activo" else "Activar Accesibilidad",
+            actionLabel = if (hasAccessibilityPermission) "Activo" else "Activar (Opcional)",
             onActionClick = {
                 try {
                     val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
