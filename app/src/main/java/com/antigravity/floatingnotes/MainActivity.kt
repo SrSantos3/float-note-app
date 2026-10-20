@@ -50,6 +50,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
+
         try {
             requestAppPermissions()
         } catch (e: Exception) {
@@ -69,6 +71,20 @@ class MainActivity : AppCompatActivity() {
                     activity = this
                 )
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        val appPkg = intent?.getStringExtra("FILTER_APP_PACKAGE")
+        val appLabel = intent?.getStringExtra("FILTER_APP_LABEL")
+        if (!appPkg.isNullOrBlank()) {
+            viewModel.setAppFilter(appPkg, appLabel)
         }
     }
 

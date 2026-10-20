@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
@@ -48,21 +49,45 @@ fun NotesListScreen(
     val isBubbleEnabled by viewModel.isBubbleServiceEnabled.collectAsState()
     val categories by viewModel.availableCategories.collectAsState()
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val selectedAppFilter by viewModel.selectedAppFilter.collectAsState()
 
     var unlockedNoteIds by remember { mutableStateOf(setOf<Long>()) }
 
     var isEisenhowerMode by remember { mutableStateOf(false) }
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Pendientes (${activeNotes.size})", "Completadas (${completedNotes.size})", "Todas")
 
-    var showAddDialog by remember { mutableStateOf(false) }
-    var noteToEdit by remember { mutableStateOf<NoteEntity?>(null) }
+    val appsWithNotes by remember(allNotes) {
+        derivedStateOf {
+            allNotes.mapNotNull { note ->
+                if (!note.targetAppName.isNullOrBlank()) {
+                    Pair(note.targetAppPackage ?: "", note.targetAppName)
+                } else null
+            }.distinctBy { it.second }
+        }
+    }
 
     val currentNotes = when (selectedTabIndex) {
         0 -> filteredActiveNotes
-        1 -> if (selectedCategory == null) completedNotes else completedNotes.filter { it.category.equals(selectedCategory, true) }
-        else -> if (selectedCategory == null) allNotes else allNotes.filter { it.category.equals(selectedCategory, true) }
+        1 -> {
+            var list = if (selectedCategory == null) completedNotes else completedNotes.filter { it.category.equals(selectedCategory, true) }
+            if (selectedAppFilter != null) {
+                list = list.filter { it.matchesForegroundApp(selectedAppFilter!!.first, selectedAppFilter!!.second) }
+            }
+            list
+        }
+        else -> {
+            var list = if (selectedCategory == null) allNotes else allNotes.filter { it.category.equals(selectedCategory, true) }
+            if (selectedAppFilter != null) {
+                list = list.filter { it.matchesForegroundApp(selectedAppFilter!!.first, selectedAppFilter!!.second) }
+            }
+            list
+        }
     }
+
+    val tabs = listOf("Pendientes (${filteredActiveNotes.size})", "Completadas (${completedNotes.size})", "Todas")
+
+    var showAddDialog by remember { mutableStateOf(false) }
+    var noteToEdit by remember { mutableStateOf<NoteEntity?>(null) }
 
     Scaffold(
         floatingActionButton = {
@@ -168,9 +193,41 @@ fun NotesListScreen(
                 }
             }
 
+            // Banner si hay un filtro de aplicación activo
+            if (selectedAppFilter != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    color = DarkSurfaceElevated,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CyanAccent.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "📱 Modo ${selectedAppFilter!!.second} (${currentNotes.size} tareas)",
+                            color = CyanAccent,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        TextButton(
+                            onClick = { viewModel.setAppFilter(null, null) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text("Ver todas", color = AmberWarning, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Filtro por Categorías / Etiquetas (Horizontal Scroll)
+            // Filtro por Categorías / Etiquetas y Aplicaciones (Horizontal Scroll)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -179,14 +236,34 @@ fun NotesListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 FilterChip(
-                    selected = selectedCategory == null,
-                    onClick = { viewModel.setFilterCategory(null) },
+                    selected = selectedCategory == null && selectedAppFilter == null,
+                    onClick = {
+                        viewModel.setFilterCategory(null)
+                        viewModel.setAppFilter(null, null)
+                    },
                     label = { Text("Todas", fontSize = 12.sp) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = PrimaryIndigo,
                         selectedLabelColor = TextPrimary
                     )
                 )
+
+                // Chips para aplicaciones detectadas en notas
+                appsWithNotes.forEach { (pkg, name) ->
+                    val isAppSelected = selectedAppFilter?.second.equals(name, ignoreCase = true)
+                    FilterChip(
+                        selected = isAppSelected,
+                        onClick = {
+                            if (isAppSelected) viewModel.setAppFilter(null, null)
+                            else viewModel.setAppFilter(pkg, name)
+                        },
+                        label = { Text("📱 $name", fontSize = 12.sp) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = EmeraldSuccess,
+                            selectedLabelColor = DarkBackground
+                        )
+                    )
+                }
 
                 categories.forEach { cat ->
                     FilterChip(

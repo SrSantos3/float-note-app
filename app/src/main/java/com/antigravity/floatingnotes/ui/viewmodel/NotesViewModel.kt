@@ -45,6 +45,18 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val _selectedCategory = MutableStateFlow<String?>(null)
     val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
 
+    // Filtro por Aplicación específica (Pair<PackageName, AppLabel>? = null para todas)
+    private val _selectedAppFilter = MutableStateFlow<Pair<String, String>?>(null)
+    val selectedAppFilter: StateFlow<Pair<String, String>?> = _selectedAppFilter.asStateFlow()
+
+    fun setAppFilter(packageName: String?, appLabel: String?) {
+        if (packageName.isNullOrBlank()) {
+            _selectedAppFilter.value = null
+        } else {
+            _selectedAppFilter.value = Pair(packageName, appLabel ?: packageName)
+        }
+    }
+
     // Lista de categorías disponibles
     val availableCategories: StateFlow<List<String>> = noteDao.getDistinctCategories()
         .map { list ->
@@ -53,10 +65,17 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("General", "Trabajo", "Personal", "Urgente", "Ideas", "Compras"))
 
-    // Notas activas filtradas por categoría
+    // Notas activas filtradas por categoría y/o aplicación vinculada
     @OptIn(ExperimentalCoroutinesApi::class)
-    val filteredActiveNotes: StateFlow<List<NoteEntity>> = combine(activeNotes, _selectedCategory) { notes, cat ->
-        if (cat == null) notes else notes.filter { it.category.equals(cat, ignoreCase = true) }
+    val filteredActiveNotes: StateFlow<List<NoteEntity>> = combine(activeNotes, _selectedCategory, _selectedAppFilter) { notes, cat, appFilter ->
+        var list = notes
+        if (cat != null) {
+            list = list.filter { it.category.equals(cat, ignoreCase = true) }
+        }
+        if (appFilter != null) {
+            list = list.filter { it.matchesForegroundApp(appFilter.first, appFilter.second) }
+        }
+        list
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Fecha seleccionada en el modo Calendario

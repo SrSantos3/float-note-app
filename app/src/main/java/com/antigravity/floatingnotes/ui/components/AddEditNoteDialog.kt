@@ -1045,6 +1045,10 @@ fun AddEditNoteDialog(
                         onClick = {
                             if (title.isNotBlank()) {
                                 AlarmToneHelper.stopPreview()
+                                val autoApp = if (targetAppName.isBlank()) AppHelper.detectAppFromText(title, context) else null
+                                val finalAppName = if (targetAppName.isNotBlank()) targetAppName.trim() else autoApp?.name
+                                val finalAppPackage = if (targetAppPackage.isNotBlank()) targetAppPackage.trim() else autoApp?.packageName
+
                                 onSave(
                                     title.trim(),
                                     content.trim(),
@@ -1062,8 +1066,8 @@ fun AddEditNoteDialog(
                                     wifiSsid.trim().ifBlank { null },
                                     alarmToneUri?.ifBlank { null },
                                     alarmToneName?.ifBlank { null },
-                                    targetAppName.trim().ifBlank { null },
-                                    targetAppPackage.trim().ifBlank { null }
+                                    finalAppName,
+                                    finalAppPackage
                                 )
                                 onDismiss()
                             }

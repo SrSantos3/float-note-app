@@ -19,6 +19,10 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AppDetectionAccess"
+        var currentForegroundPackage: String? = null
+            private set
+        var currentForegroundLabel: String? = null
+            private set
 
         fun isAccessibilityServiceEnabled(context: Context): Boolean {
             val expectedComponentName = ComponentName(context, AppDetectionAccessibilityService::class.java)
@@ -61,22 +65,33 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun isSystemOrTransientPackage(packageName: String): Boolean {
+        if (packageName == applicationContext.packageName) return true
+        if (packageName == "android" ||
+            packageName == "com.android.systemui" ||
+            packageName == "com.google.android.gms" ||
+            packageName.contains("inputmethod") ||
+            packageName.contains("keyboard") ||
+            packageName.contains("ime") ||
+            packageName.contains("permissioncontroller") ||
+            packageName.contains("packageinstaller") ||
+            packageName == "com.miui.securityadd" ||
+            packageName == "com.miui.guardprovider" ||
+            packageName == "com.samsung.android.app.cocktailbarservice"
+        ) {
+            return true
+        }
+        return false
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val packageName = event.packageName?.toString() ?: return
 
-            // Ignorar nuestro propio paquete para no reaccionar a la propia app
-            if (packageName == applicationContext.packageName) return
-
-            // Ignorar teclado y UI del sistema
-            if (packageName == "com.android.systemui" || 
-                packageName.contains("inputmethod") || 
-                packageName.contains("keyboard") || 
-                packageName.contains("ime")) {
-                return
-            }
+            // Ignorar teclado, UI del sistema y nuestra propia aplicación
+            if (isSystemOrTransientPackage(packageName)) return
 
             // Si el usuario vuelve a la pantalla de inicio (launcher), notificar salida de la app
             if (launcherPackages.contains(packageName) || packageName.contains("launcher") || packageName.contains("home")) {
@@ -84,6 +99,8 @@ class AppDetectionAccessibilityService : AccessibilityService() {
                     Log.d(TAG, "Usuario volvió al inicio. Saliendo de app: $lastPackageName")
                     notifyAppExited(lastPackageName!!)
                     lastPackageName = null
+                    currentForegroundPackage = null
+                    currentForegroundLabel = null
                 }
                 return
             }
@@ -93,18 +110,21 @@ class AppDetectionAccessibilityService : AccessibilityService() {
 
             val previousPackage = lastPackageName
             lastPackageName = packageName
+            currentForegroundPackage = packageName
+
+            val (appLabel, _) = AppHelper.getAppInfoForPackage(this, packageName)
+            currentForegroundLabel = appLabel
 
             if (previousPackage != null) {
                 notifyAppExited(previousPackage)
             }
 
-            Log.d(TAG, "App abierta detectada: $packageName")
-            notifyAppOpened(packageName)
+            Log.d(TAG, "App abierta detectada: $packageName ($appLabel)")
+            notifyAppOpened(packageName, appLabel)
         }
     }
 
-    private fun notifyAppOpened(packageName: String) {
-        val (appLabel, _) = AppHelper.getAppInfoForPackage(this, packageName)
+    private fun notifyAppOpened(packageName: String, appLabel: String) {
         FloatingBubbleService.handleForegroundAppChanged(this, packageName, appLabel)
     }
 
@@ -119,5 +139,7 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         lastPackageName = null
+        currentForegroundPackage = null
+        currentForegroundLabel = null
     }
 }

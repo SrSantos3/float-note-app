@@ -96,9 +96,17 @@ class FloatingBubbleService : Service() {
                 putExtra(EXTRA_APP_LABEL, appLabel)
             }
             try {
-                context.startService(intent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    context.startService(intent)
+                } catch (e2: Exception) {
+                    e2.printStackTrace()
+                }
             }
         }
 
@@ -108,9 +116,17 @@ class FloatingBubbleService : Service() {
                 putExtra(EXTRA_PACKAGE_NAME, packageName)
             }
             try {
-                context.startService(intent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    context.startService(intent)
+                } catch (e2: Exception) {
+                    e2.printStackTrace()
+                }
             }
         }
     }
@@ -342,9 +358,14 @@ class FloatingBubbleService : Service() {
         }
 
         popupView?.findViewById<Button>(R.id.btn_open_full_app)?.setOnClickListener {
+            val filter = activeAppFilter
             hidePopup()
             val intent = Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                if (filter != null) {
+                    putExtra("FILTER_APP_PACKAGE", filter.packageName)
+                    putExtra("FILTER_APP_LABEL", filter.appLabel)
+                }
             }
             startActivity(intent)
         }
@@ -464,7 +485,28 @@ class FloatingBubbleService : Service() {
         if (isPopupOpen) {
             hidePopup()
         } else {
-            showPopup()
+            // Si la burbuja se abre manualmente mientras se está sobre una app, aplicar el filtro de esa app si tiene tareas
+            val currentPkg = AppDetectionAccessibilityService.currentForegroundPackage
+            val currentLabel = AppDetectionAccessibilityService.currentForegroundLabel
+            if (!currentPkg.isNullOrBlank()) {
+                serviceScope.launch {
+                    val db = AppDatabase.getDatabase(applicationContext)
+                    val allPending = withContext(Dispatchers.IO) {
+                        db.noteDao().getActiveNotesSync()
+                    }
+                    cachedAllNotes = allPending
+                    val matching = allPending.filter { it.matchesForegroundApp(currentPkg, currentLabel ?: currentPkg) }
+                    if (matching.isNotEmpty()) {
+                        val (_, emoji) = AppHelper.getAppInfoForPackage(applicationContext, currentPkg)
+                        activeAppFilter = CurrentAppFilter(currentPkg, currentLabel ?: currentPkg, emoji)
+                    }
+                    updateOverlayUI(allPending)
+                    showPopup()
+                }
+            } else {
+                updateOverlayUI(cachedAllNotes)
+                showPopup()
+            }
         }
     }
 
@@ -497,7 +539,7 @@ class FloatingBubbleService : Service() {
     private fun observeDatabaseNotes() {
         serviceScope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
-            db.noteDao().getOverlayPendingNotes().collectLatest { notes ->
+            db.noteDao().getActiveNotes().collectLatest { notes ->
                 cachedAllNotes = notes
                 updateOverlayUI(notes)
             }
@@ -515,9 +557,10 @@ class FloatingBubbleService : Service() {
             if (matchingNotes.isNotEmpty()) {
                 val (_, emoji) = AppHelper.getAppInfoForPackage(applicationContext, packageName)
                 activeAppFilter = CurrentAppFilter(packageName, appLabel, emoji)
-                // Se abre solo automáticamente y muestra sólo las tareas de esta app
+                cachedAllNotes = allPending
+                // Se actualiza la UI con las notas filtradas de esa app y luego se muestra el popup
+                updateOverlayUI(allPending)
                 showPopup()
-                updateOverlayUI(cachedAllNotes)
             }
         }
     }
@@ -538,21 +581,13 @@ class FloatingBubbleService : Service() {
         // Filtrar tareas según la aplicación actualmente en primer plano (si aplica)
         val displayNotes = if (currentFilter != null) {
             val filtered = notes.filter { it.matchesForegroundApp(currentFilter.packageName, currentFilter.appLabel) }
-            if (filtered.isEmpty()) {
-                // Se cumplieron todas las tareas de la app: desbloquear el filtro y celebrar
-                activeAppFilter = null
-                layoutAppFilterBanner?.visibility = View.GONE
-                Toast.makeText(applicationContext, "¡Todas las tareas de ${currentFilter.appLabel} cumplidas! 🎉", Toast.LENGTH_SHORT).show()
-                notes
-            } else {
-                layoutAppFilterBanner?.visibility = View.VISIBLE
-                tvAppFilterEmoji?.text = currentFilter.emoji
-                tvAppFilterTitle?.text = "Modo ${currentFilter.appLabel} (${filtered.size})"
-                filtered
-            }
+            layoutAppFilterBanner?.visibility = View.VISIBLE
+            tvAppFilterEmoji?.text = currentFilter.emoji
+            tvAppFilterTitle?.text = "Modo ${currentFilter.appLabel} (${filtered.size})"
+            filtered
         } else {
             layoutAppFilterBanner?.visibility = View.GONE
-            notes
+            notes.filter { it.isPinnedToOverlay }.ifEmpty { notes }
         }
 
         val count = displayNotes.size

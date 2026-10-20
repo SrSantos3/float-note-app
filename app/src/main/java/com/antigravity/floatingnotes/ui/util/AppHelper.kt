@@ -83,7 +83,9 @@ object AppHelper {
         val known = POPULAR_APPS.firstOrNull { 
             it.packageName.equals(packageName, ignoreCase = true) || 
             (it.id == "whatsapp" && packageName.contains("whatsapp")) ||
-            (it.id == "twitter" && packageName.contains("twitter"))
+            (it.id == "twitter" && packageName.contains("twitter")) ||
+            (it.id == "telegram" && packageName.contains("telegram")) ||
+            (it.id == "tiktok" && (packageName.contains("musically") || packageName.contains("trill")))
         }
         if (known != null) {
             return Pair(known.name, known.emoji)
@@ -110,16 +112,23 @@ object AppHelper {
         foregroundPackage: String,
         foregroundLabel: String
     ): Boolean {
-        // Coincidencia exacta por paquete
-        if (!notePackage.isNullOrBlank() && notePackage.equals(foregroundPackage, ignoreCase = true)) {
+        if (foregroundPackage.isBlank()) return false
+
+        // Coincidencia exacta o contenida por paquete
+        if (!notePackage.isNullOrBlank() && 
+            (notePackage.equals(foregroundPackage, ignoreCase = true) || 
+             foregroundPackage.equals(notePackage, ignoreCase = true) ||
+             foregroundPackage.contains(notePackage, ignoreCase = true))) {
             return true
         }
 
-        // Si es WhatsApp (manejar WhatsApp y WhatsApp Business)
+        // Si es WhatsApp (WhatsApp estándar y WhatsApp Business)
         if (foregroundPackage.contains("whatsapp") && 
             (noteAppName?.contains("whatsapp", ignoreCase = true) == true || 
+             notePackage?.contains("whatsapp", ignoreCase = true) == true ||
              noteTitle.contains("whatsapp", ignoreCase = true) || 
              noteTitle.contains("wasap", ignoreCase = true) ||
+             noteTitle.contains("wpp", ignoreCase = true) ||
              noteContent.contains("whatsapp", ignoreCase = true))) {
             return true
         }
@@ -127,9 +136,28 @@ object AppHelper {
         // Si es Instagram
         if (foregroundPackage.contains("instagram") && 
             (noteAppName?.contains("instagram", ignoreCase = true) == true || 
+             notePackage?.contains("instagram", ignoreCase = true) == true ||
              noteTitle.contains("instagram", ignoreCase = true) || 
              noteTitle.contains("insta", ignoreCase = true) ||
              noteContent.contains("instagram", ignoreCase = true))) {
+            return true
+        }
+
+        // Si es Telegram
+        if (foregroundPackage.contains("telegram") && 
+            (noteAppName?.contains("telegram", ignoreCase = true) == true || 
+             notePackage?.contains("telegram", ignoreCase = true) == true ||
+             noteTitle.contains("telegram", ignoreCase = true) || 
+             noteContent.contains("telegram", ignoreCase = true))) {
+            return true
+        }
+
+        // Si es YouTube
+        if (foregroundPackage.contains("youtube") && 
+            (noteAppName?.contains("youtube", ignoreCase = true) == true || 
+             notePackage?.contains("youtube", ignoreCase = true) == true ||
+             noteTitle.contains("youtube", ignoreCase = true) || 
+             noteContent.contains("youtube", ignoreCase = true))) {
             return true
         }
 
@@ -158,7 +186,9 @@ object AppHelper {
         for (known in POPULAR_APPS) {
             if (known.packageName.equals(foregroundPackage, ignoreCase = true) ||
                 (known.id == "whatsapp" && foregroundPackage.contains("whatsapp")) ||
-                (known.id == "twitter" && foregroundPackage.contains("twitter"))) {
+                (known.id == "twitter" && foregroundPackage.contains("twitter")) ||
+                (known.id == "telegram" && foregroundPackage.contains("telegram")) ||
+                (known.id == "tiktok" && (foregroundPackage.contains("musically") || foregroundPackage.contains("trill")))) {
                 for (alias in known.aliases) {
                     val regex = Regex("(?i)\\b" + Regex.escape(alias) + "\\b")
                     if (regex.containsMatchIn(titleLower) || regex.containsMatchIn(contentLower)) {
