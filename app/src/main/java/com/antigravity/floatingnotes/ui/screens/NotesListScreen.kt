@@ -59,8 +59,9 @@ fun NotesListScreen(
     val appsWithNotes by remember(allNotes) {
         derivedStateOf {
             allNotes.mapNotNull { note ->
-                if (!note.targetAppName.isNullOrBlank()) {
-                    Pair(note.targetAppPackage ?: "", note.targetAppName)
+                val appName = note.targetAppName
+                if (!appName.isNullOrBlank()) {
+                    Pair(note.targetAppPackage ?: "", appName)
                 } else null
             }.distinctBy { it.second }
         }
