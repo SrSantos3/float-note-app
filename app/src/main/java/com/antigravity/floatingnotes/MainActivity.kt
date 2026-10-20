@@ -51,7 +51,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        try {
+            handleIntent(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         try {
             requestAppPermissions()
@@ -78,7 +82,11 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleIntent(intent)
+        try {
+            handleIntent(intent)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -99,6 +107,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestAppPermissions() {
+        val prefs = getSharedPreferences("app_runtime_prefs", MODE_PRIVATE)
+        val hasRequestedInitial = prefs.getBoolean("has_requested_initial_permissions", false)
+        if (hasRequestedInitial) return
+
         val permissionsToRequest = mutableListOf<String>()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -120,6 +132,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (permissionsToRequest.isNotEmpty()) {
+            prefs.edit().putBoolean("has_requested_initial_permissions", true).apply()
             requestPermissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }

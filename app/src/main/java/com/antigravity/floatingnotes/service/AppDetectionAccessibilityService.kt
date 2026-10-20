@@ -88,9 +88,18 @@ class AppDetectionAccessibilityService : AccessibilityService() {
         if (event == null) return
 
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val packageName = event.packageName?.toString() ?: return
+            // Si es nuestra propia app (FloatNote), limpiar estados de apps externas y no interferir
+            if (packageName == applicationContext.packageName) {
+                if (lastPackageName != null) {
+                    notifyAppExited(lastPackageName!!)
+                    lastPackageName = null
+                    currentForegroundPackage = null
+                    currentForegroundLabel = null
+                }
+                return
+            }
 
-            // Ignorar teclado, UI del sistema y nuestra propia aplicación
+            // Ignorar teclado, UI del sistema y paquetes transitorios
             if (isSystemOrTransientPackage(packageName)) return
 
             // Si el usuario vuelve a la pantalla de inicio (launcher), notificar salida de la app

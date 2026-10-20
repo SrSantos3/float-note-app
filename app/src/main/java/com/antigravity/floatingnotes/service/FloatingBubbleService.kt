@@ -89,44 +89,23 @@ class FloatingBubbleService : Service() {
         const val EXTRA_PACKAGE_NAME = "extra_package_name"
         const val EXTRA_APP_LABEL = "extra_app_label"
 
+        var activeInstance: FloatingBubbleService? = null
+            private set
+
+        val isServiceRunning: Boolean
+            get() = activeInstance != null
+
         fun handleForegroundAppChanged(context: Context, packageName: String, appLabel: String) {
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
-                action = ACTION_APP_OPENED
-                putExtra(EXTRA_PACKAGE_NAME, packageName)
-                putExtra(EXTRA_APP_LABEL, appLabel)
-            }
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                try {
-                    context.startService(intent)
-                } catch (e2: Exception) {
-                    e2.printStackTrace()
-                }
+            val service = activeInstance
+            if (service != null) {
+                service.onAppOpened(packageName, appLabel)
             }
         }
 
         fun handleForegroundAppExited(context: Context, packageName: String) {
-            val intent = Intent(context, FloatingBubbleService::class.java).apply {
-                action = ACTION_APP_EXITED
-                putExtra(EXTRA_PACKAGE_NAME, packageName)
-            }
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                try {
-                    context.startService(intent)
-                } catch (e2: Exception) {
-                    e2.printStackTrace()
-                }
+            val service = activeInstance
+            if (service != null) {
+                service.onAppExited(packageName)
             }
         }
     }
@@ -136,23 +115,24 @@ class FloatingBubbleService : Service() {
     override fun onCreate() {
         super.onCreate()
         try {
-            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            updateScreenDimensions()
-
-            startForegroundNotification()
-
-            // Si el usuario no tiene permisos para dibujar sobre otras apps, detener para evitar crash
+            // Si el usuario no tiene permisos para dibujar sobre otras apps, detener inmediatamente para evitar crash
             if (!Settings.canDrawOverlays(this)) {
                 stopSelf()
                 return
             }
 
+            activeInstance = this
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            updateScreenDimensions()
+
+            startForegroundNotification()
             setupFloatingBubble()
             setupFloatingPopup()
             initSpeechRecognizer()
             observeDatabaseNotes()
         } catch (e: Exception) {
             e.printStackTrace()
+            activeInstance = null
             stopSelf()
         }
     }
@@ -198,11 +178,15 @@ class FloatingBubbleService : Service() {
                 .build()
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                )
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    )
+                } catch (e: Exception) {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
@@ -232,7 +216,8 @@ class FloatingBubbleService : Service() {
             y = screenHeight / 3
         }
 
-        val inflater = LayoutInflater.from(this)
+        val themedContext = ContextThemeWrapper(this, R.style.Theme_FloatingNotesApp)
+        val inflater = LayoutInflater.from(themedContext)
         bubbleView = inflater.inflate(R.layout.layout_floating_bubble, null)
         tvPendingBadge = bubbleView?.findViewById(R.id.tv_pending_badge)
 
@@ -318,7 +303,8 @@ class FloatingBubbleService : Service() {
             gravity = Gravity.CENTER
         }
 
-        val inflater = LayoutInflater.from(this)
+        val themedContext = ContextThemeWrapper(this, R.style.Theme_FloatingNotesApp)
+        val inflater = LayoutInflater.from(themedContext)
         popupView = inflater.inflate(R.layout.layout_floating_popup, null)
 
         containerTodoItems = popupView?.findViewById(R.id.container_todo_items)
@@ -546,7 +532,7 @@ class FloatingBubbleService : Service() {
         }
     }
 
-    private fun onAppOpened(packageName: String, appLabel: String) {
+    internal fun onAppOpened(packageName: String, appLabel: String) {
         serviceScope.launch {
             val db = AppDatabase.getDatabase(applicationContext)
             val allPending = withContext(Dispatchers.IO) {
@@ -565,7 +551,7 @@ class FloatingBubbleService : Service() {
         }
     }
 
-    private fun onAppExited(packageName: String) {
+    internal fun onAppExited(packageName: String) {
         if (activeAppFilter?.packageName.equals(packageName, ignoreCase = true)) {
             // El usuario salió de la app asociada: cerrar el popup y limpiar el filtro
             activeAppFilter = null
@@ -611,7 +597,8 @@ class FloatingBubbleService : Service() {
             }
         } else {
             tvEmptyState?.visibility = View.GONE
-            val inflater = LayoutInflater.from(this)
+            val themedContext = ContextThemeWrapper(this, R.style.Theme_FloatingNotesApp)
+            val inflater = LayoutInflater.from(themedContext)
 
             for (note in displayNotes) {
                 val itemView = inflater.inflate(R.layout.item_overlay_todo, containerTodoItems, false)
@@ -698,6 +685,9 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (activeInstance == this) {
+            activeInstance = null
+        }
         speechRecognizer?.destroy()
         speechRecognizer = null
         serviceScope.cancel()

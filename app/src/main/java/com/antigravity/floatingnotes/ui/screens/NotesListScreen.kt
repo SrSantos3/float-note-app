@@ -71,15 +71,17 @@ fun NotesListScreen(
         0 -> filteredActiveNotes
         1 -> {
             var list = if (selectedCategory == null) completedNotes else completedNotes.filter { it.category.equals(selectedCategory, true) }
-            if (selectedAppFilter != null) {
-                list = list.filter { it.matchesForegroundApp(selectedAppFilter!!.first, selectedAppFilter!!.second) }
+            val appFilter = selectedAppFilter
+            if (appFilter != null) {
+                list = list.filter { it.matchesForegroundApp(appFilter.first, appFilter.second) }
             }
             list
         }
         else -> {
             var list = if (selectedCategory == null) allNotes else allNotes.filter { it.category.equals(selectedCategory, true) }
-            if (selectedAppFilter != null) {
-                list = list.filter { it.matchesForegroundApp(selectedAppFilter!!.first, selectedAppFilter!!.second) }
+            val appFilter = selectedAppFilter
+            if (appFilter != null) {
+                list = list.filter { it.matchesForegroundApp(appFilter.first, appFilter.second) }
             }
             list
         }
@@ -195,7 +197,8 @@ fun NotesListScreen(
             }
 
             // Banner si hay un filtro de aplicación activo
-            if (selectedAppFilter != null) {
+            val appFilter = selectedAppFilter
+            if (appFilter != null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -211,7 +214,7 @@ fun NotesListScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "📱 Modo ${selectedAppFilter!!.second} (${currentNotes.size} tareas)",
+                            text = "📱 Modo ${appFilter.second} (${currentNotes.size} tareas)",
                             color = CyanAccent,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
