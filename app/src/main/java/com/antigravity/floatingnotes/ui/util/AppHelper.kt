@@ -95,9 +95,10 @@ object AppHelper {
             val pm = context.packageManager
             val appInfo = pm.getApplicationInfo(packageName, 0)
             val label = pm.getApplicationLabel(appInfo).toString()
-            Pair(label, "📱")
+            Pair(label.ifBlank { "App" }, "📱")
         } catch (e: Exception) {
-            Pair(packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }, "📱")
+            val fallback = packageName.substringAfterLast('.').replaceFirstChar { it.uppercase() }.ifBlank { "App" }
+            Pair(fallback, "📱")
         }
     }
 

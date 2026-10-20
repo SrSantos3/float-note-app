@@ -14,6 +14,15 @@ class FloatingNotesApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                android.util.Log.e("FloatNoteCrash", "CRASH NO CAPTURADO en hilo ${thread.name}: ${throwable.message}", throwable)
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
         createNotificationChannels()
     }
 

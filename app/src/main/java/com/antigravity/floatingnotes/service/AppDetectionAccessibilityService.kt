@@ -1,11 +1,11 @@
 package com.antigravity.floatingnotes.service
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 import android.util.Log
@@ -25,30 +25,45 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             private set
 
         fun isAccessibilityServiceEnabled(context: Context): Boolean {
-            val expectedComponentName = ComponentName(context, AppDetectionAccessibilityService::class.java)
-            val enabledServices = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: return false
+            return try {
+                val expectedComponentName = ComponentName(context, AppDetectionAccessibilityService::class.java)
+                val enabledServices = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+                ) ?: return false
 
-            val colonSplitter = TextUtils.SimpleStringSplitter(':')
-            colonSplitter.setString(enabledServices)
+                val colonSplitter = TextUtils.SimpleStringSplitter(':')
+                colonSplitter.setString(enabledServices)
 
-            while (colonSplitter.hasNext()) {
-                val componentNameString = colonSplitter.next()
-                val enabledComponent = ComponentName.unflattenFromString(componentNameString)
-                if (enabledComponent != null && enabledComponent == expectedComponentName) {
-                    return true
+                while (colonSplitter.hasNext()) {
+                    val componentNameString = colonSplitter.next()
+                    val enabledComponent = ComponentName.unflattenFromString(componentNameString)
+                    if (enabledComponent != null && enabledComponent == expectedComponentName) {
+                        return true
+                    }
                 }
+                false
+            } catch (e: Throwable) {
+                false
             }
-            return false
         }
     }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        Log.d(TAG, "Servicio de Detección de Apps Conectado con Éxito")
-        loadLauncherPackages()
+        try {
+            val info = AccessibilityServiceInfo().apply {
+                eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
+                notificationTimeout = 100
+                flags = AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+            }
+            this.serviceInfo = info
+            Log.d(TAG, "Servicio de Detección de Apps Conectado con Éxito")
+            loadLauncherPackages()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error en onServiceConnected", e)
+        }
     }
 
     private fun loadLauncherPackages() {
@@ -58,15 +73,18 @@ class AppDetectionAccessibilityService : AccessibilityService() {
             }
             val resolveInfos = packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
             for (info in resolveInfos) {
-                launcherPackages.add(info.activityInfo.packageName)
+                val pkg = info.activityInfo?.packageName
+                if (!pkg.isNullOrBlank()) {
+                    launcherPackages.add(pkg)
+                }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             e.printStackTrace()
         }
     }
 
     private fun isSystemOrTransientPackage(packageName: String): Boolean {
-        if (packageName == applicationContext.packageName) return true
+        if (packageName.equals(applicationContext.packageName, ignoreCase = true)) return true
         if (packageName == "android" ||
             packageName == "com.android.systemui" ||
             packageName == "com.google.android.gms" ||
@@ -87,58 +105,72 @@ class AppDetectionAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // Si es nuestra propia app (FloatNote), limpiar estados de apps externas y no interferir
-            if (packageName == applicationContext.packageName) {
-                if (lastPackageName != null) {
-                    notifyAppExited(lastPackageName!!)
-                    lastPackageName = null
-                    currentForegroundPackage = null
-                    currentForegroundLabel = null
+        try {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val eventPackage = event.packageName?.toString() ?: return
+
+                // Si es nuestra propia app (FloatNote), limpiar estados de apps externas y no interferir
+                if (eventPackage.equals(applicationContext.packageName, ignoreCase = true)) {
+                    if (lastPackageName != null) {
+                        notifyAppExited(lastPackageName!!)
+                        lastPackageName = null
+                        currentForegroundPackage = null
+                        currentForegroundLabel = null
+                    }
+                    return
                 }
-                return
-            }
 
-            // Ignorar teclado, UI del sistema y paquetes transitorios
-            if (isSystemOrTransientPackage(packageName)) return
+                // Ignorar teclado, UI del sistema y paquetes transitorios
+                if (isSystemOrTransientPackage(eventPackage)) return
 
-            // Si el usuario vuelve a la pantalla de inicio (launcher), notificar salida de la app
-            if (launcherPackages.contains(packageName) || packageName.contains("launcher") || packageName.contains("home")) {
-                if (lastPackageName != null) {
-                    Log.d(TAG, "Usuario volvió al inicio. Saliendo de app: $lastPackageName")
-                    notifyAppExited(lastPackageName!!)
-                    lastPackageName = null
-                    currentForegroundPackage = null
-                    currentForegroundLabel = null
+                // Si el usuario vuelve a la pantalla de inicio (launcher), notificar salida de la app
+                if (launcherPackages.contains(eventPackage) || eventPackage.contains("launcher") || eventPackage.contains("home")) {
+                    if (lastPackageName != null) {
+                        Log.d(TAG, "Usuario volvió al inicio. Saliendo de app: $lastPackageName")
+                        notifyAppExited(lastPackageName!!)
+                        lastPackageName = null
+                        currentForegroundPackage = null
+                        currentForegroundLabel = null
+                    }
+                    return
                 }
-                return
+
+                // Si el paquete no ha cambiado, no hacer nada
+                if (eventPackage.equals(lastPackageName, ignoreCase = true)) return
+
+                val previousPackage = lastPackageName
+                lastPackageName = eventPackage
+                currentForegroundPackage = eventPackage
+
+                val (appLabel, _) = AppHelper.getAppInfoForPackage(this, eventPackage)
+                currentForegroundLabel = appLabel
+
+                if (previousPackage != null) {
+                    notifyAppExited(previousPackage)
+                }
+
+                Log.d(TAG, "App abierta detectada: $eventPackage ($appLabel)")
+                notifyAppOpened(eventPackage, appLabel)
             }
-
-            // Si el paquete no ha cambiado, no hacer nada
-            if (packageName == lastPackageName) return
-
-            val previousPackage = lastPackageName
-            lastPackageName = packageName
-            currentForegroundPackage = packageName
-
-            val (appLabel, _) = AppHelper.getAppInfoForPackage(this, packageName)
-            currentForegroundLabel = appLabel
-
-            if (previousPackage != null) {
-                notifyAppExited(previousPackage)
-            }
-
-            Log.d(TAG, "App abierta detectada: $packageName ($appLabel)")
-            notifyAppOpened(packageName, appLabel)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Error en onAccessibilityEvent", e)
         }
     }
 
     private fun notifyAppOpened(packageName: String, appLabel: String) {
-        FloatingBubbleService.handleForegroundAppChanged(this, packageName, appLabel)
+        try {
+            FloatingBubbleService.handleForegroundAppChanged(this, packageName, appLabel)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
     }
 
     private fun notifyAppExited(packageName: String) {
-        FloatingBubbleService.handleForegroundAppExited(this, packageName)
+        try {
+            FloatingBubbleService.handleForegroundAppExited(this, packageName)
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
     }
 
     override fun onInterrupt() {

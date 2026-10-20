@@ -703,8 +703,14 @@ fun SettingsScreen(
             isGranted = hasAccessibilityPermission,
             actionLabel = if (hasAccessibilityPermission) "Activo" else "Activar Accesibilidad",
             onActionClick = {
-                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                context.startActivity(intent)
+                try {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, "No se pudo abrir Ajustes de Accesibilidad", Toast.LENGTH_SHORT).show()
+                }
             }
         )
 

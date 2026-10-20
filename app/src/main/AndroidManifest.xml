@@ -112,6 +112,7 @@
             android:name=".service.AppDetectionAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:label="@string/accessibility_service_name"
+            android:description="@string/accessibility_service_description"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

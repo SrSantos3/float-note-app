@@ -534,29 +534,37 @@ class FloatingBubbleService : Service() {
 
     internal fun onAppOpened(packageName: String, appLabel: String) {
         serviceScope.launch {
-            val db = AppDatabase.getDatabase(applicationContext)
-            val allPending = withContext(Dispatchers.IO) {
-                db.noteDao().getActiveNotesSync()
-            }
+            try {
+                val db = AppDatabase.getDatabase(applicationContext)
+                val allPending = withContext(Dispatchers.IO) {
+                    db.noteDao().getActiveNotesSync()
+                }
 
-            val matchingNotes = allPending.filter { it.matchesForegroundApp(packageName, appLabel) }
-            if (matchingNotes.isNotEmpty()) {
-                val (_, emoji) = AppHelper.getAppInfoForPackage(applicationContext, packageName)
-                activeAppFilter = CurrentAppFilter(packageName, appLabel, emoji)
-                cachedAllNotes = allPending
-                // Se actualiza la UI con las notas filtradas de esa app y luego se muestra el popup
-                updateOverlayUI(allPending)
-                showPopup()
+                val matchingNotes = allPending.filter { it.matchesForegroundApp(packageName, appLabel) }
+                if (matchingNotes.isNotEmpty()) {
+                    val (_, emoji) = AppHelper.getAppInfoForPackage(applicationContext, packageName)
+                    activeAppFilter = CurrentAppFilter(packageName, appLabel, emoji)
+                    cachedAllNotes = allPending
+                    // Se actualiza la UI con las notas filtradas de esa app y luego se muestra el popup
+                    updateOverlayUI(allPending)
+                    showPopup()
+                }
+            } catch (e: Throwable) {
+                e.printStackTrace()
             }
         }
     }
 
     internal fun onAppExited(packageName: String) {
-        if (activeAppFilter?.packageName.equals(packageName, ignoreCase = true)) {
-            // El usuario salió de la app asociada: cerrar el popup y limpiar el filtro
-            activeAppFilter = null
-            hidePopup()
-            updateOverlayUI(cachedAllNotes)
+        try {
+            if (activeAppFilter?.packageName.equals(packageName, ignoreCase = true)) {
+                // El usuario salió de la app asociada: cerrar el popup y limpiar el filtro
+                activeAppFilter = null
+                hidePopup()
+                updateOverlayUI(cachedAllNotes)
+            }
+        } catch (e: Throwable) {
+            e.printStackTrace()
         }
     }
 
