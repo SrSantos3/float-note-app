@@ -79,6 +79,7 @@ class FloatingBubbleService : Service() {
     )
     private var activeAppFilter: CurrentAppFilter? = null
     private var cachedAllNotes: List<NoteEntity> = emptyList()
+    private var appWatcherJob: Job? = null
 
     companion object {
         const val CHANNEL_ID = "channel_floating_bubble_service"
@@ -130,6 +131,7 @@ class FloatingBubbleService : Service() {
             setupFloatingPopup()
             initSpeechRecognizer()
             observeDatabaseNotes()
+            startForegroundAppWatcher()
         } catch (e: Exception) {
             e.printStackTrace()
             activeInstance = null
@@ -472,8 +474,11 @@ class FloatingBubbleService : Service() {
             hidePopup()
         } else {
             // Si la burbuja se abre manualmente mientras se está sobre una app, aplicar el filtro de esa app si tiene tareas
-            val currentPkg = AppDetectionAccessibilityService.currentForegroundPackage
-            val currentLabel = AppDetectionAccessibilityService.currentForegroundLabel
+            val currentPkg = ForegroundAppDetector.getForegroundPackage(applicationContext)
+            val currentLabel = if (!currentPkg.isNullOrBlank()) {
+                AppHelper.getAppInfoForPackage(applicationContext, currentPkg).first
+            } else null
+
             if (!currentPkg.isNullOrBlank()) {
                 serviceScope.launch {
                     val db = AppDatabase.getDatabase(applicationContext)
@@ -528,6 +533,38 @@ class FloatingBubbleService : Service() {
             db.noteDao().getActiveNotes().collectLatest { notes ->
                 cachedAllNotes = notes
                 updateOverlayUI(notes)
+            }
+        }
+    }
+
+    private fun startForegroundAppWatcher() {
+        appWatcherJob?.cancel()
+        appWatcherJob = serviceScope.launch(Dispatchers.Default) {
+            var lastPkg: String? = null
+            while (isActive) {
+                delay(1500)
+                try {
+                    if (ForegroundAppDetector.hasUsageStatsPermission(applicationContext)) {
+                        val currentPkg = ForegroundAppDetector.getForegroundPackage(applicationContext)
+                        if (currentPkg != lastPkg) {
+                            lastPkg = currentPkg
+                            if (!currentPkg.isNullOrBlank()) {
+                                val (label, _) = AppHelper.getAppInfoForPackage(applicationContext, currentPkg)
+                                withContext(Dispatchers.Main) {
+                                    onAppOpened(currentPkg, label)
+                                }
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    if (activeAppFilter != null) {
+                                        onAppExited(activeAppFilter?.packageName ?: "")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Throwable) {
+                    // Silenciar fallos transitorios en el watcher
+                }
             }
         }
     }
@@ -696,6 +733,8 @@ class FloatingBubbleService : Service() {
         if (activeInstance == this) {
             activeInstance = null
         }
+        appWatcherJob?.cancel()
+        appWatcherJob = null
         speechRecognizer?.destroy()
         speechRecognizer = null
         serviceScope.cancel()

@@ -38,7 +38,7 @@ import androidx.core.content.ContextCompat
 import android.media.RingtoneManager
 import com.antigravity.floatingnotes.data.NoteEntity
 import com.antigravity.floatingnotes.service.AlarmReceiver
-import com.antigravity.floatingnotes.service.AppDetectionAccessibilityService
+import com.antigravity.floatingnotes.service.ForegroundAppDetector
 import com.antigravity.floatingnotes.service.ReminderScheduler
 import com.antigravity.floatingnotes.ui.theme.*
 import com.antigravity.floatingnotes.ui.util.AlarmToneHelper
@@ -59,7 +59,7 @@ fun SettingsScreen(
         Manifest.permission.RECORD_AUDIO
     ) == PackageManager.PERMISSION_GRANTED
     val hasBiometricHardware = BiometricHelper.canAuthenticate(context)
-    val hasAccessibilityPermission = AppDetectionAccessibilityService.isAccessibilityServiceEnabled(context)
+    val hasUsageStatsPermission = remember { ForegroundAppDetector.hasUsageStatsPermission(context) }
 
     val isQuietHoursEnabled by viewModel.isQuietHoursEnabled.collectAsState()
     val quietHoursStartHour by viewModel.quietHoursStartHour.collectAsState()
@@ -698,19 +698,12 @@ fun SettingsScreen(
         }
 
         PermissionStatusCard(
-            title = "Detección Inteligente de Apps (Opcional)",
-            description = "Abre automáticamente la lista de tareas al entrar en WhatsApp, Instagram u otras apps vinculadas. Si tu teléfono tiene ajustes restringidos o prefieres no activarlo, la burbuja y los filtros funcionan al 100% manualmente sin este permiso.",
-            isGranted = hasAccessibilityPermission,
-            actionLabel = if (hasAccessibilityPermission) "Activo" else "Activar (Opcional)",
+            title = "Detección Inteligente de Apps (Datos de Uso)",
+            description = "Filtra automáticamente tus tareas al abrir WhatsApp, Instagram, etc., usando el acceso estándar de Android (no requiere accesibilidad ni permisos invasivos). Es 100% opcional: la app y la burbuja funcionan al completo sin este permiso.",
+            isGranted = hasUsageStatsPermission,
+            actionLabel = if (hasUsageStatsPermission) "Activo" else "Activar (Opcional)",
             onActionClick = {
-                try {
-                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(intent)
-                } catch (e: Exception) {
-                    Toast.makeText(context, "No se pudo abrir Ajustes de Accesibilidad", Toast.LENGTH_SHORT).show()
-                }
+                ForegroundAppDetector.openUsageAccessSettings(context)
             }
         )
 
